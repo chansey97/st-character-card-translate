@@ -16,10 +16,10 @@ flowchart TD
     D --> E["entities/"]
     E --> F["3. glossary：统一译名"]
     F --> G["glossary.json"]
-    C --> H["4. subsets：匹配原文中的全局词条"]
+    C --> H["4. subsets：匹配正文术语、收集关键词译名"]
     G --> H
     H --> I["glossary_subsets/"]
-    C --> J["5. translate：翻译<br/>调用 LLM 翻译正文、映射关键词<br/>核对世界书条目数和逐项 id"]
+    C --> J["5. translate：翻译<br/>LLM 翻译正文，程序映射关键词<br/>核对世界书条目数和逐项 id"]
     I --> J
     J --> K["translations/"]
     A --> L["6. backfill：回填原卡"]
@@ -59,9 +59,9 @@ flowchart TD
 
 1. 全部非空世界书关键词作为强制实体，与普通实体共同参与构建全局 glossary。
 
-2. 每个待译文件扫描全局 glossary，通过匹配器生成自己的 glossary 子集。
+2. 每个待译文件生成一个子集文件，包含两个词典：`glossary` 保存正文匹配到的全局词条，用于 LLM 请求；`keywords_glossary` 保存本片世界书关键词的全局译名，用于程序映射关键词。
 
-3. glossary 子集允许重叠命中。
+3. 子集中的 `glossary` 允许重叠命中。
 
    例如：正文出现 `Moonshadow City` 时，子集可能同时收录 `Moonshadow City` 和 `Moonshadow`，由提示词要求模型按完整语境处理。首版无需对 "大小写"、"最长匹配"、"短词误命中长词" 等问题做特殊处理。
 
@@ -274,7 +274,7 @@ data.character_book.description
 
 | 字段                                | 处理方式             |
 | ----------------------------------- | -------------------- |
-| 世界书条目 `keys`、`secondary_keys` | 按 glossary 子集映射 |
+| 世界书条目 `keys`、`secondary_keys` | 按子集的 `keywords_glossary` 映射 |
 | 世界书条目 `content`、`comment`     | 交给 LLM 翻译        |
 | 世界书条目 `name`                   | 仅保留，不翻译       |
 
@@ -571,18 +571,41 @@ glossary.json 已存在时跳过；否则汇总  `entities` 目录中实际存�
 
 ### 3.4 阶段四：匹配生成 glossary 子集 `subsets`
 
-全局 glossary 很大，不应把整个 glossary.json 提交给模型，而是只需要一个出现在待译文件中的全局 glossary 词汇的子集。
+全局 glossary 很大，翻译模型只需要当前待译正文匹配到的词条。世界书关键词的译名另存为程序映射所需的词典。
 
-输入为 `fields` 和全局 `glossary.json`。
+输入为 `fields` 和全局 `glossary.json`。每个待译文件生成一个同名子集文件，顶层固定包含两个词典字段：
 
-扫描范围：
+| 字段 | 内容与用途 |
+| --- | --- |
+| `glossary` | 正文匹配到的全局词条，供翻译模型使用 |
+| `keywords_glossary` | 当前世界书分片全部非空白 `keys`、`secondary_keys` 的全局译名，供程序映射关键词 |
+
+普通字段及每条开场白使用同一结构，`keywords_glossary` 固定为 `{}`。世界书没有非空白关键词时，该字段也为 `{}`。
+
+例如，正文包含 `Ailin` 和 `Moonshadow City`，本片关键词只有 `Moonshadow City` 时，子集文件为：
+
+```json
+{
+  "glossary": {
+    "Ailin": "艾琳",
+    "Moonshadow City": "月影城"
+  },
+  "keywords_glossary": {
+    "Moonshadow City": "月影城"
+  }
+}
+```
+
+关键词在正文中也被匹配到时，同时进入两个词典，生成时使用同一全局译名。仅出现在关键词数组中的词只进入 `keywords_glossary`。
+
+`glossary` 的正文扫描范围：
 
 | 待译文件类型 | 扫描内容 |
 | --- | --- |
 | 普通文本（普通字段及每条开场白） | `text` |
 | 世界书 | 每项 `content`、`comment` |
 
-**注意：glossary 子集不能仅仅通过待译文件在 `entities`  中的对应的同名 JSON 文件来得到。**
+**注意：子集中的 `glossary` 不能仅仅通过待译文件在 `entities` 中对应的同名 JSON 文件来得到。**
 
 假设 `fields` 里有两个世界书分片：
 
@@ -616,54 +639,61 @@ data.character_book.entries_000002_000002.json
 ]
 ```
 
-实体阶段，LLM 可能漏抽了 data.character_book.entries_000001_000002.json 中 Ailin，导致 `entities` 里对应的同名 JSON 文件没有 `"source": "Ailin"`。于是，如果是采用了 `entities` 中对应的同名 JSON 文件里的 source 来构造 glossary 子集，会导致漏掉词汇。SillyTavern 运行时，如果 id=1 的 lore entry 触发，Ailin 会进入上下文。由于 Ailin 是一个关键词，会级联触发 id=2 的 lore entry。这意味着 Ailin 必须被统一翻译，它必须进入 glossary 子集。
+实体阶段，LLM 可能漏抽了 data.character_book.entries_000001_000001.json 中 Ailin，导致 `entities` 里对应的同名 JSON 文件没有 `"source": "Ailin"`。于是，如果是采用了 `entities` 中对应的同名 JSON 文件里的 source 来构造正文词典，会导致漏掉词汇。SillyTavern 运行时，如果 id=1 的 lore entry 触发，Ailin 会进入上下文。由于 Ailin 是一个关键词，会级联触发 id=2 的 lore entry。这意味着 Ailin 必须被统一翻译，它必须进入子集的 `glossary` 字典。
 
-构造 glossary 子集的匹配规则：
+构造 `glossary` 的匹配规则：
 
 - 使用 `source.casefold() in text.casefold()`。
 - 不设置词边界，不分词，不做空白或 Unicode 规范化。
 - 保留所有命中词条，包括重叠词及大小写变体。
 - 不使用最长匹配
-- 子集中的键和值均保留原样；`casefold()` 仅用于查找。
+- 词典中的键和值均保留原样；`casefold()` 仅用于查找。
 - 忽略空白 source（尽管理论上不会出现）。
-- 世界书分片另外加入其全部非空白关键词，即使它们没有出现在正文中。
+
+`keywords_glossary` 按本片非空白关键词的原字符串精确查表，不参与正文匹配。代码中的 `nonblank_keywords` 为当前世界书分片的全部非空白 `keys`、`secondary_keys`；普通文本为空集合。
 
 核心逻辑：
 
 ```python
 folded_texts = [text.casefold() for text in translatable_texts]
 
-sources = {
+matched_sources = {
     source
     for source in glossary
     if source.strip()
     and any(source.casefold() in text for text in folded_texts)
 }
 
-sources.update(nonblank_keywords)
-
 subset = {
-    source: glossary[source]
-    for source in sorted(sources)
+    "glossary": {
+        source: glossary[source]
+        for source in sorted(matched_sources)
+    },
+    "keywords_glossary": {
+        source: glossary[source]
+        for source in sorted(set(nonblank_keywords))
+    },
 }
 ```
 
 因此：
 
-- `Ailin` 即使在当前文件的实体发现中被漏抽，只要全局 glossary 中存在、正文中命中，就会进入子集。
+- `Ailin` 即使在当前文件的实体发现中被漏抽，只要全局 glossary 中存在、正文中命中，就会进入子集的 `glossary`。
 - 用户手动在全局 glossary 新增词条后，重新生成子集即可让包含该词的待译文件引用它。
 - `Ann` 可以命中 `Anna`，`Orc` 可以命中 `force`；接受这类额外候选，由模型按语境处理。
 - `Moonshadow City` 与 `Moonshadow` 同时命中时，两者都保留。
-- 强制关键词在全局 glossary 中缺失时，直接按键访问报错，不静默跳过。
-- 无命中且无非空白关键词时写入 `{}`。
+- 生成 `keywords_glossary` 时，关键词在全局 glossary 中缺失则直接按键访问报错，不静默跳过。
+- 正文无命中时，`glossary` 为 `{}`；无非空白关键词时，`keywords_glossary` 为 `{}`。两者都为空时，仍保存 `{"glossary": {}, "keywords_glossary": {}}`。
 
-子集可人工新增、删除或修改，但跨条目一致性由编辑者负责（默认术语翻译模式下，必须保留本片关键词所需的映射，否则翻译阶段读取时失败）。
+两个词典可分别人工新增、删除或修改。`glossary` 的编辑影响正文翻译请求；`keywords_glossary` 的编辑影响默认术语模式下的关键词映射。
+
+同一词在两个词典中被改成不同译名时，程序分别使用各自的值，不检查冲突或自动同步。两份词典及跨条目的译名一致性由编辑者负责；需要统一修改重叠词时，应同时修改两处。默认术语翻译模式下，`keywords_glossary` 必须保留本片关键词所需的映射，否则翻译阶段读取时失败。
 
 需要全卡统一改名时，应修改全局 glossary 并重建全部相关下游产物。
 
 ### 3.5 阶段五：翻译 `translate`
 
-按 `fields` 文件名排序处理。目标译文已存在时立即跳过；否则读取原文和同名 glossary 子集。
+按 `fields` 文件名排序处理。目标译文已存在时立即跳过；否则读取原文和同名子集文件，其中 `glossary` 用于正文请求，`keywords_glossary` 用于程序映射世界书关键词。
 
 翻译产物保存到 `translations ` 目录中的同名文件。
 
@@ -679,7 +709,7 @@ target_lang
 background
 ```
 
-根据术语模式再提供 `glossary` 或 `do_not_translate_terms`，二者互斥。普通字段和每条开场白均使用 `text`；只有世界书使用 `entries` 结构。
+根据术语模式，再提供子集的 `glossary` 词典或由其键组成的 `do_not_translate_terms`，二者互斥。`keywords_glossary` 不发送给翻译模型。普通字段和每条开场白均使用 `text`；只有世界书使用 `entries` 结构。
 
 普通文本请求（普通字段及每条开场白共用）：
 
@@ -745,21 +775,21 @@ LLM 不返回 `name`、`keys`、`secondary_keys`。
 
 默认模式：
 
-- 请求包含 `glossary`，值为同名子集。
+- 请求包含 `glossary`，值为同名子集文件的 `subset["glossary"]`。
 - 正文按照词条值翻译。
-- 每个非空白关键词通过 `subset[原关键词]` 映射。
+- 程序通过 `subset["keywords_glossary"][原关键词]` 映射每个非空白关键词；缺少映射时停止。
 - 空白关键词原样保留。
 - 关键词数量及顺序不变，重复译名暂时保留。
 
 指定 `--no-translate-glossary`：
 
 - 请求去掉 `glossary`，改为 `do_not_translate_terms`。
-- 数组内容为子集的键，沿用其顺序。
+- 数组内容为 `subset["glossary"]` 的键，沿用其顺序。
 - 提示词要求所列术语保留原词。
-- 程序原样复制 `keys`、`secondary_keys`。
+- 程序原样复制 `keys`、`secondary_keys`，不使用 `keywords_glossary` 中的译名。
 - 实体、全局 glossary 和子集的生成规则不变。
 
-两个请求字段互斥。空子集分别传 `{}` 或 `[]`。
+两个请求字段互斥。子集的 `glossary` 为空时，两种模式分别传 `{}` 或 `[]`，不受 `keywords_glossary` 是否为空的影响。
 
 例如，保留术语模式下的世界书请求为：
 
@@ -845,7 +875,7 @@ do_not_translate_terms 中列出的名称和术语，在正文中实际适用时
 
 - 世界书先核对条目数，再逐项核对 `id`，不自动重排。
 - 从原文强制复制 `null`、空字符串和纯空白文本；只有原本具有可译内容的字段采用模型译文。
-- 世界书的`name` 从 `fields` 复制，关键词由程序映射。
+- 世界书的 `name` 从 `fields` 复制；默认术语模式下，关键词由程序按 `keywords_glossary` 映射，保留术语模式下原样复制。
 - 检查及组装全部成功后，才保存该文件。
 
 失败时报告当前文件路径并停止，不保存该响应，不继续请求后续文件。
@@ -869,7 +899,7 @@ for position, (entry, translated) in enumerate(
 
 检查只针对本次新响应。已有译文仍按存在即跳过复用；人工编辑者负责保持世界书条目数量、顺序和 `id`，以及普通文本文件的 `{text}` 结构。
 
-**空正文处理：**文件中没有可译正文时，不调用翻译模型，但仍读取同名子集并保存完整译文产物。普通字段及单条开场白直接保存原 `text`；世界书分片仍执行所需关键词映射，不得因正文为空而跳过关键词翻译。
+**空正文处理：**文件中没有可译正文时，不调用翻译模型，但仍读取同名子集并保存完整译文产物。普通字段及单条开场白直接保存原 `text`；世界书在默认术语模式下仍通过 `keywords_glossary` 映射关键词，保留术语模式下原样复制关键词，不因正文或 `glossary` 为空而跳过。
 
 ### 3.6 阶段六：回填原卡 `backfill`
 
@@ -1032,7 +1062,8 @@ deduplicate_keys(
 | 背景、模型、实体提示词、fields 内容 | 删除 entities 及其全部下游，从 `discover` 继续 |
 | entities | 删除 glossary 及其全部下游，从 `glossary` 继续 |
 | 全局 glossary | 删除 subsets、translations、回填卡、去重卡，从 `subsets` 继续 |
-| 某个 glossary 子集 | 保留该子集；删除同名译文、回填卡、去重卡，从 `translate` 继续 |
+| 子集文件结构或生成规则 | 删除 subsets、translations、回填卡、去重卡，从 `subsets` 继续 |
+| 某个子集文件中的 glossary 或 keywords_glossary | 保留该子集；删除同名译文、回填卡、去重卡，从 `translate` 继续 |
 | 术语模式、翻译提示词 | 删除 translations、回填卡、去重卡，从 `translate` 继续 |
 | 某个 translations 文件 | 删除回填卡、去重卡，从 `backfill` 继续 |
 | 回填卡 | 删除去重卡，从 `deduplicate_keys` 继续 |
@@ -1070,8 +1101,10 @@ st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.js
 | 字段保真 | 缺失、null、空字符串、纯空白、空数组保持区别；原卡未知字段、世界书 name/id/配置不变；开场白中间文件及请求、响应均无 id，最终仍为字符串数组 |
 | 强制实体 | 重复关键词精确去重；保留大小写及空白；漏词停止且不落盘；置信度强制为 1；无正文但有关键词仍调用发现模型 |
 | glossary | 平均分择优、同分取先者、大小写独立、空实体结果、人工指定原词或其他语言译名 |
-| 匹配器 | 跨片词汇、中文及日文子串、大小写变体、重叠词、允许的短词误命中；不跨字符串拼接；强制关键词补入子集 |
-| 关键词映射 | 精确查表、缺映射失败、保持数量顺序、保留术语模式、无正文仍映射关键词 |
+| 匹配器 | 跨片词汇、中文及日文子串、大小写变体、重叠词、允许的短词误命中；不跨字符串拼接；仅出现在关键词数组中的词不进入正文 glossary |
+| 子集结构与编辑 | 固定包含 glossary、keywords_glossary 两个词典；普通文本的 keywords_glossary 为空；空结果仍保留双字段结构；重叠词生成时译名相同，人工改成不同译名后分别使用，不校验或自动同步 |
+| 关键词映射 | 从 keywords_glossary 精确查表、缺映射失败、保持数量顺序；保留术语模式不采用其译名；无正文仍映射关键词 |
+| 翻译术语请求 | 默认模式只发送 subset["glossary"]，保留术语模式只发送其键；keywords_glossary 不进入请求；正文未命中但有关键词时分别发送空词典或空清单 |
 | 模型契约 | 普通文本实体请求及其完整提示词均不包含 forced_terms；世界书实体请求包含 forced_terms，无非空白关键词时为空清单，强制实体规则仅出现在世界书类型提示词中；每条开场白与普通字段共用 text 请求、提示词及响应 Schema，两类实体响应均保持九字段结构；请求不包含文件路径或文件名序号；世界书翻译响应只含 id/content/comment，数量或逐项 id 不符、null 位置错误时停止；空白文本由程序恢复 |
 | 回填与去重 | 开场白按原数组位置读取同序号文件中的 text；世界书按译文文件名排序拼接，再按原位置回填；不按 id 查找、排序或重查数量；缺目标文件或世界书译文不足时停止且不输出新卡；精确稳定去重；不跨数组或条目去重 |
 | 复用与失败 | 存在即跳过；使用损坏文件时报错；保留已有产物；空任务可完成七阶段 |
@@ -1091,8 +1124,10 @@ st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.js
 - Entry B 的关键词为 `Ailin`，位于另一个分片。
 - A 的实体响应故意遗漏 `Ailin`。
 - B 的强制实体使全局 glossary 包含 `Ailin`。
-- A 的子集仍包含 `Ailin`。
-- 假客户端验证 A 的翻译请求收到该词译名，B 的关键词由同一全局译名产生的子集映射。
+- A 的子集 `glossary` 仍包含 `Ailin`，B 的子集 `keywords_glossary` 包含 `Ailin`，两者来自同一全局译名。
+- 假客户端验证 A 的翻译请求收到该词译名，B 的关键词由其 `keywords_glossary` 映射。
+
+另外增加关键词未在本片正文中出现的用例：该词进入 `keywords_glossary`，不进入 `glossary`，也不进入翻译请求，但仍由程序映射到译文关键词数组。分别覆盖 `keys` 和 `secondary_keys`。
 
 另外验证正则形式只在关键词字段触发不支持错误，正文中的正则示例不导致拒绝。
 
@@ -1129,10 +1164,11 @@ README 包含：
 - BCP 47 标签示例及默认 `zh-Hans`。
 - 分层 TOML 配置、SDK 重试和调用前等待。
 - 强制实体、子串匹配、重叠词及大小写变体的处理规则。
+- 子集文件的双字段结构：`glossary` 用于正文请求，`keywords_glossary` 用于程序映射关键词；普通文本的 `keywords_glossary` 为空。
 - 开场白逐条按普通文本处理、文件序号从 0 开始且不生成 id 的约定；世界书原生 id 与从 1 开始的分片文件名位置编号的区别；世界书翻译阶段逐项核对、回填阶段顺序消费的约定。
 - 普通文本和世界书两类实体及翻译请求示例、仅世界书实体请求包含的 forced_terms 及其关键词来源，以及按类型和术语模式组合的完整系统提示词。
 - 默认术语翻译、个别词保留原文、统一保留术语三种用法。
-- 局部编辑对子集及跨条目一致性的影响。
+- 局部编辑对正文译名、关键词译名及跨条目一致性的影响；重叠词需由编辑者同步修改，程序不校验或自动同步。
 - 存在即跳过规则及完整清理续跑表。
 - 正则关键词的范围限制、原字段保留约定。
 - 普通测试、真实 API 测试及持久产物位置。
