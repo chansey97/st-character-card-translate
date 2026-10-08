@@ -19,7 +19,7 @@ flowchart TD
     C --> H["4. subsets：匹配正文术语、收集关键词译名"]
     G --> H
     H --> I["glossary_subsets/"]
-    C --> J["5. translate：翻译<br/>LLM 翻译正文，程序映射关键词<br/>核对世界书条目数和逐项 id"]
+    C --> J["5. translate：翻译<br/>LLM 翻译正文，程序替换关键词<br/>核对世界书条目数和逐项 id"]
     I --> J
     J --> K["translations/"]
     A --> L["6. backfill：回填原卡"]
@@ -59,7 +59,7 @@ flowchart TD
 
 1. 全部非空世界书关键词作为强制实体，与普通实体共同参与构建全局 glossary。
 
-2. 每个待译文件生成一个子集文件，包含两个词典：`glossary` 保存正文匹配到的全局词条，用于 LLM 请求；`keywords_glossary` 保存本片世界书关键词的全局译名，用于程序映射关键词。
+2. 每个待译文件生成一个子集文件，包含两个词典：`glossary` 保存正文匹配到的全局词条，用于 LLM 请求；`keywords_glossary` 保存本片世界书关键词的全局译名，用于程序替换关键词。
 
 3. 子集中的 `glossary` 允许重叠命中。
 
@@ -274,7 +274,7 @@ data.character_book.description
 
 | 字段                                | 处理方式             |
 | ----------------------------------- | -------------------- |
-| 世界书条目 `keys`、`secondary_keys` | 按子集的 `keywords_glossary` 映射 |
+| 世界书条目 `keys`、`secondary_keys` | 按子集的 `keywords_glossary` 替换 |
 | 世界书条目 `content`、`comment`     | 交给 LLM 翻译        |
 | 世界书条目 `name`                   | 仅保留，不翻译       |
 
@@ -333,7 +333,7 @@ data.character_book.description
 
 世界书中间条目固定包含 `id`、`name`、`keys`、`secondary_keys`、`content`、`comment`。`id` 必须从原条目读取；其他约定字段原来缺失时用 `null` 表示，与 `""` 和 `[]` 区分。
 
-`translations` 使用对应的同一种结构。其中世界书的 `name` 由程序从 `fields` 复制，关键词由程序映射，正文来自翻译结果。回填仍以原卡的字段存在情况为准，不将中间结构中的 `null` 补写成新字段。
+`translations` 使用对应的同一种结构。其中世界书的 `name` 由程序从 `fields` 复制，关键词由程序替换，正文来自翻译结果。回填仍以原卡的字段存在情况为准，不将中间结构中的 `null` 补写成新字段。
 
 ### 2.7 编码与空内容
 
@@ -571,14 +571,14 @@ glossary.json 已存在时跳过；否则汇总  `entities` 目录中实际存�
 
 ### 3.4 阶段四：匹配生成 glossary 子集 `subsets`
 
-全局 glossary 很大，翻译模型只需要当前待译正文匹配到的词条。世界书关键词的译名另存为程序映射所需的词典。
+全局 glossary 很大，翻译模型只需要当前待译正文匹配到的词条。世界书关键词的译名另存为程序替换关键词所需的词典。
 
 输入为 `fields` 和全局 `glossary.json`。每个待译文件生成一个同名子集文件，顶层固定包含两个词典字段：
 
 | 字段 | 内容与用途 |
 | --- | --- |
 | `glossary` | 正文匹配到的全局词条，供翻译模型使用 |
-| `keywords_glossary` | 当前世界书分片全部非空白 `keys`、`secondary_keys` 的全局译名，供程序映射关键词 |
+| `keywords_glossary` | 当前世界书分片全部非空白 `keys`、`secondary_keys` 的全局译名，供程序替换关键词 |
 
 普通字段及每条开场白使用同一结构，`keywords_glossary` 固定为 `{}`。世界书没有非空白关键词时，该字段也为 `{}`。
 
@@ -685,7 +685,7 @@ subset = {
 - 生成 `keywords_glossary` 时，关键词在全局 glossary 中缺失则直接按键访问报错，不静默跳过。
 - 正文无命中时，`glossary` 为 `{}`；无非空白关键词时，`keywords_glossary` 为 `{}`。两者都为空时，仍保存 `{"glossary": {}, "keywords_glossary": {}}`。
 
-两个词典可分别人工新增、删除或修改。`glossary` 的编辑影响正文翻译请求；`keywords_glossary` 的编辑影响默认术语模式下的关键词映射。
+两个词典可分别人工新增、删除或修改。`glossary` 的编辑影响正文翻译请求；`keywords_glossary` 的编辑影响默认术语模式下的关键词替换。
 
 同一词在两个词典中被改成不同译名时，程序分别使用各自的值，不检查冲突或自动同步。两份词典及跨条目的译名一致性由编辑者负责；需要统一修改重叠词时，应同时修改两处。默认术语翻译模式下，`keywords_glossary` 必须保留本片关键词所需的映射，否则翻译阶段读取时失败。
 
@@ -693,7 +693,7 @@ subset = {
 
 ### 3.5 阶段五：翻译 `translate`
 
-按 `fields` 文件名排序处理。目标译文已存在时立即跳过；否则读取原文和同名子集文件，其中 `glossary` 用于正文请求，`keywords_glossary` 用于程序映射世界书关键词。
+按 `fields` 文件名排序处理。目标译文已存在时立即跳过；否则读取原文和同名子集文件，其中 `glossary` 用于正文请求，`keywords_glossary` 用于程序替换世界书关键词。
 
 翻译产物保存到 `translations ` 目录中的同名文件。
 
@@ -777,7 +777,7 @@ LLM 不返回 `name`、`keys`、`secondary_keys`。
 
 - 请求包含 `glossary`，值为同名子集文件的 `subset["glossary"]`。
 - 正文按照词条值翻译。
-- 程序通过 `subset["keywords_glossary"][原关键词]` 映射每个非空白关键词；缺少映射时停止。
+- 关键词替换：程序按完整原关键词查表 `subset["keywords_glossary"][原关键词]`，用对应译名逐项替换 `keys`、`secondary_keys` 中的非空白字符串；缺少映射时停止。
 - 空白关键词原样保留。
 - 关键词数量及顺序不变，重复译名暂时保留。
 
@@ -875,7 +875,7 @@ do_not_translate_terms 中列出的名称和术语，在正文中实际适用时
 
 - 世界书先核对条目数，再逐项核对 `id`，不自动重排。
 - 从原文强制复制 `null`、空字符串和纯空白文本；只有原本具有可译内容的字段采用模型译文。
-- 世界书的 `name` 从 `fields` 复制；默认术语模式下，关键词由程序按 `keywords_glossary` 映射，保留术语模式下原样复制。
+- 世界书的 `name` 从 `fields` 复制；默认术语模式下，关键词由程序按 `keywords_glossary` 替换，保留术语模式下原样复制。
 - 检查及组装全部成功后，才保存该文件。
 
 失败时报告当前文件路径并停止，不保存该响应，不继续请求后续文件。
@@ -899,7 +899,7 @@ for position, (entry, translated) in enumerate(
 
 检查只针对本次新响应。已有译文仍按存在即跳过复用；人工编辑者负责保持世界书条目数量、顺序和 `id`，以及普通文本文件的 `{text}` 结构。
 
-**空正文处理：**文件中没有可译正文时，不调用翻译模型，但仍读取同名子集并保存完整译文产物。普通字段及单条开场白直接保存原 `text`；世界书在默认术语模式下仍通过 `keywords_glossary` 映射关键词，保留术语模式下原样复制关键词，不因正文或 `glossary` 为空而跳过。
+**空正文处理：**文件中没有可译正文时，不调用翻译模型，但仍读取同名子集并保存完整译文产物。普通字段及单条开场白直接保存原 `text`；世界书在默认术语模式下仍通过 `keywords_glossary` 替换关键词，保留术语模式下原样复制关键词，不因正文或 `glossary` 为空而跳过。
 
 ### 3.6 阶段六：回填原卡 `backfill`
 
@@ -1103,7 +1103,7 @@ st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.js
 | glossary | 平均分择优、同分取先者、大小写独立、空实体结果、人工指定原词或其他语言译名 |
 | 匹配器 | 跨片词汇、中文及日文子串、大小写变体、重叠词、允许的短词误命中；不跨字符串拼接；仅出现在关键词数组中的词不进入正文 glossary |
 | 子集结构与编辑 | 固定包含 glossary、keywords_glossary 两个词典；普通文本的 keywords_glossary 为空；空结果仍保留双字段结构；重叠词生成时译名相同，人工改成不同译名后分别使用，不校验或自动同步 |
-| 关键词映射 | 从 keywords_glossary 精确查表、缺映射失败、保持数量顺序；保留术语模式不采用其译名；无正文仍映射关键词 |
+| 关键词替换 | 从 keywords_glossary 按完整原关键词精确查表、缺映射失败、保持数量顺序；保留术语模式不采用其译名；无正文仍替换关键词 |
 | 翻译术语请求 | 默认模式只发送 subset["glossary"]，保留术语模式只发送其键；keywords_glossary 不进入请求；正文未命中但有关键词时分别发送空词典或空清单 |
 | 模型契约 | 普通文本实体请求及其完整提示词均不包含 forced_terms；世界书实体请求包含 forced_terms，无非空白关键词时为空清单，强制实体规则仅出现在世界书类型提示词中；每条开场白与普通字段共用 text 请求、提示词及响应 Schema，两类实体响应均保持九字段结构；请求不包含文件路径或文件名序号；世界书翻译响应只含 id/content/comment，数量或逐项 id 不符、null 位置错误时停止；空白文本由程序恢复 |
 | 回填与去重 | 开场白按原数组位置读取同序号文件中的 text；世界书按译文文件名排序拼接，再按原位置回填；不按 id 查找、排序或重查数量；缺目标文件或世界书译文不足时停止且不输出新卡；精确稳定去重；不跨数组或条目去重 |
@@ -1125,9 +1125,9 @@ st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.js
 - A 的实体响应故意遗漏 `Ailin`。
 - B 的强制实体使全局 glossary 包含 `Ailin`。
 - A 的子集 `glossary` 仍包含 `Ailin`，B 的子集 `keywords_glossary` 包含 `Ailin`，两者来自同一全局译名。
-- 假客户端验证 A 的翻译请求收到该词译名，B 的关键词由其 `keywords_glossary` 映射。
+- 假客户端验证 A 的翻译请求收到该词译名，B 的关键词由程序按其 `keywords_glossary` 替换。
 
-另外增加关键词未在本片正文中出现的用例：该词进入 `keywords_glossary`，不进入 `glossary`，也不进入翻译请求，但仍由程序映射到译文关键词数组。分别覆盖 `keys` 和 `secondary_keys`。
+另外增加关键词未在本片正文中出现的用例：该词进入 `keywords_glossary`，不进入 `glossary`，也不进入翻译请求，但仍由程序用其译名替换译文关键词数组中的对应元素。分别覆盖 `keys` 和 `secondary_keys`。
 
 另外验证正则形式只在关键词字段触发不支持错误，正文中的正则示例不导致拒绝。
 
@@ -1164,7 +1164,7 @@ README 包含：
 - BCP 47 标签示例及默认 `zh-Hans`。
 - 分层 TOML 配置、SDK 重试和调用前等待。
 - 强制实体、子串匹配、重叠词及大小写变体的处理规则。
-- 子集文件的双字段结构：`glossary` 用于正文请求，`keywords_glossary` 用于程序映射关键词；普通文本的 `keywords_glossary` 为空。
+- 子集文件的双字段结构：`glossary` 用于正文请求，`keywords_glossary` 用于程序替换关键词；普通文本的 `keywords_glossary` 为空。
 - 开场白逐条按普通文本处理、文件序号从 0 开始且不生成 id 的约定；世界书原生 id 与从 1 开始的分片文件名位置编号的区别；世界书翻译阶段逐项核对、回填阶段顺序消费的约定。
 - 普通文本和世界书两类实体及翻译请求示例、仅世界书实体请求包含的 forced_terms 及其关键词来源，以及按类型和术语模式组合的完整系统提示词。
 - 默认术语翻译、个别词保留原文、统一保留术语三种用法。
