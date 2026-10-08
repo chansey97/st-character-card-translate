@@ -396,9 +396,9 @@ data.character_book.description
 
 普通文本（含每条开场白）从 `text` 抽取值得统一处理的名称、概念和术语。
 
-世界书从 `content`、`comment` 抽取实体，同时 `keys`、`secondary_keys` 作为强制实体。
+世界书从 `content`、`comment` 抽取实体，同时把 `keys`、`secondary_keys` 直接作为强制实体的 `source`，无需模型判断是否属于实体。模型仍须为每个强制实体填写完整的九字段记录。
 
-**强制实体规则：**
+**世界书强制实体规则：**
 
 1. 程序收集当前世界书分片全部非空白 `keys`、`secondary_keys`。
 2. 按原字符串去重，保留首次出现顺序。
@@ -409,11 +409,11 @@ data.character_book.description
 
 强制实体的大小写和首尾空白必须原样保留。关键词没有正文上下文时，`context` 可使用关键词本身。
 
-没有非空白待译文本且没有非空白强制词的文件，直接写入 `[]`，不调用模型。世界书即使没有正文，只要有强制词，仍须请求模型生成其译名。
+普通文本的 `text` 为空或纯空白时，直接写入 `[]`，不调用模型。世界书没有非空白正文且没有非空白强制词时，同样直接写入 `[]`；只要有强制词，即使没有正文，仍须请求模型生成完整实体记录。
 
 #### 实体请求示例
 
-实体请求分为普通文本和世界书两类，均包含 `source_lang`、`target_lang`、`background` 和 `forced_terms`。
+实体请求分为普通文本和世界书两类，均包含 `source_lang`、`target_lang` 和 `background`。普通文本请求另含 `text`；世界书请求另含 `entries` 和 `forced_terms`，没有非空白关键词时，`forced_terms` 为 `[]`。
 
 程序根据本地文件类别选择提示词。以下用简化文本说明请求结构。
 
@@ -424,12 +424,11 @@ data.character_book.description
   "source_lang": "en",
   "target_lang": "zh-Hans",
   "background": "A fantasy setting with cities and mages.",
-  "forced_terms": [],
   "text": "The ruler of Moonshadow City is Ailin."
 }
 ```
 
-世界书：
+世界书请求：
 
 ```json
 {
@@ -490,7 +489,7 @@ data.character_book.description
 公共部分：
 
 ```text
-你是角色卡和世界书的术语编辑。请从本次指定的待译文本及 forced_terms 中识别需要统一处理的名称、概念和术语，并生成 target_lang 指定语言的建议译名。background 提供作品背景和文风参考，不是实体来源。
+你是角色卡和世界书的术语编辑。请按本次输入类型的规则确定需要统一处理的名称、概念和术语，并生成 target_lang 指定语言的建议译名。background 提供作品背景和文风参考，不是实体来源。
 
 source_lang 和 target_lang 使用 BCP 47 语言标签，分别表示源语言和目标语言。例如 en 表示英语，ja 表示日语，zh-Hans 表示简体中文，zh-Hant 表示繁体中文。译名应遵循 target_lang 指定的书写系统及地区用语。
 
@@ -498,11 +497,9 @@ source_lang 和 target_lang 使用 BCP 47 语言标签，分别表示源语言�
 
 普通实体优先包括人物、地点、组织、种族、作品，以及具有特定含义的物品、能力和世界观术语。不要批量抽取普通词汇、代词或语法成分。URL、HTML 标签及属性、CSS、代码和宏本身不作为普通实体；其中可读的自然语言按语境判断。
 
-forced_terms 是必须返回的词条清单。无论其中的词是否属于专有名词、是否符合普通实体筛选标准、是否出现在待译正文中，每个词都必须有一条记录。source 必须与清单字符串完全相同，包括大小写和首尾空白；entity_confidence 必须为 1.0。仍须填写分类、译名及另外两项置信度。
-
 普通实体的 source 复制当前待译文本中的原表记，不改写成词典原形、别名或其他文字系统的拼写，不附加周边空白。不要从背景或记忆中补充未出现的名称。同一 source 在当前响应中只返回一条记录；大小写不同的 source 不合并。
 
-context 复制支持判断的简短原文片段，不复制整段无关内容。强制词在正文中没有可引用的上下文时，直接使用该强制词本身，不虚构原句。
+context 复制支持判断的简短原文片段，不复制整段无关内容。
 
 type 和 subtype 使用简短英文类别，建议采用 snake_case，不受预定义类别限制。reasoning 固定用一句简短英文，说明实体是什么，以及分类或译名依据。
 
@@ -510,13 +507,13 @@ type 和 subtype 使用简短英文类别，建议采用 snake_case，不受预�
 
 分别填写 entity_confidence、type_confidence、translation_confidence，数值范围为 0 到 1。这些分数是启发式自评，不要求全部高分。
 
-只返回符合响应 Schema 的 JSON 对象，顶层只有 entities。每条实体只包含 source、context、reasoning、type、subtype、translation、entity_confidence、type_confidence、translation_confidence。forced_terms 为空且没有合适实体时，entities 可以为空数组。不返回输入条目的 id，不添加解释或 Markdown 代码围栏。
+只返回符合响应 Schema 的 JSON 对象，顶层只有 entities。每条实体只包含 source、context、reasoning、type、subtype、translation、entity_confidence、type_confidence、translation_confidence。不返回输入条目的 id，不添加解释或 Markdown 代码围栏。
 ```
 
 普通文本类型部分（含每条开场白）：
 
 ```text
-本次待译文本位于 text。只从 text 和 forced_terms 抽取实体。
+本次待译文本位于 text。只从 text 抽取实体；没有合适实体时，entities 返回空数组。
 ```
 
 世界书类型部分：
@@ -524,9 +521,13 @@ type 和 subtype 使用简短英文类别，建议采用 snake_case，不受预�
 ```text
 本次待译文本位于 entries 各项的 content 和 comment。null 表示原条目缺少该字段，不从 null 抽取实体。
 
-name 只用于理解条目背景，不翻译 name，也不因为一个词仅出现在 name 中就将其作为普通实体。世界书关键词已列在 forced_terms 中，必须全部处理；这些词不需要在 content 或 comment 中重复抽取。
+name 只用于理解条目背景，不翻译 name，也不因为一个词仅出现在 name 中就将其作为普通实体。
 
-汇总整个分片的实体，返回一个 entities 数组。
+forced_terms 是由本分片 keys、secondary_keys 汇总的强制实体清单，无需判断其中的词是否属于实体。无论是否属于专有名词、是否符合普通实体筛选标准、是否出现在正文中，每个词都必须返回一条完整的九字段记录。source 必须直接使用清单中的原字符串，包括大小写和首尾空白；entity_confidence 必须为 1.0，其余字段仍须按公共规则填写。这些词不需要在 content 或 comment 中重复抽取。
+
+强制词在正文中没有可引用的上下文时，context 直接使用该强制词本身，不虚构原句。
+
+汇总整个分片的实体，返回一个 entities 数组。只有 forced_terms 为空且正文中没有合适实体时，entities 才可以为空数组。
 ```
 
 ### 3.3 阶段三：构建全局 glossary `glossary`
@@ -1071,7 +1072,7 @@ st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.js
 | glossary | 平均分择优、同分取先者、大小写独立、空实体结果、人工指定原词或其他语言译名 |
 | 匹配器 | 跨片词汇、中文及日文子串、大小写变体、重叠词、允许的短词误命中；不跨字符串拼接；强制关键词补入子集 |
 | 关键词映射 | 精确查表、缺映射失败、保持数量顺序、保留术语模式、无正文仍映射关键词 |
-| 模型契约 | 两类实体请求均有 forced_terms，普通文本为空清单；每条开场白与普通字段共用 text 请求、提示词及响应 Schema；请求不包含文件路径或文件名序号；世界书翻译响应只含 id/content/comment，数量或逐项 id 不符、null 位置错误时停止；空白文本由程序恢复 |
+| 模型契约 | 普通文本实体请求及其完整提示词均不包含 forced_terms；世界书实体请求包含 forced_terms，无非空白关键词时为空清单，强制实体规则仅出现在世界书类型提示词中；每条开场白与普通字段共用 text 请求、提示词及响应 Schema，两类实体响应均保持九字段结构；请求不包含文件路径或文件名序号；世界书翻译响应只含 id/content/comment，数量或逐项 id 不符、null 位置错误时停止；空白文本由程序恢复 |
 | 回填与去重 | 开场白按原数组位置读取同序号文件中的 text；世界书按译文文件名排序拼接，再按原位置回填；不按 id 查找、排序或重查数量；缺目标文件或世界书译文不足时停止且不输出新卡；精确稳定去重；不跨数组或条目去重 |
 | 复用与失败 | 存在即跳过；使用损坏文件时报错；保留已有产物；空任务可完成七阶段 |
 | CLI 与配置 | chunk-size 默认 10，显式指定时只接受一个正整数，缺值、多值或非正值均报错；非法阶段区间；语言字符检查；配置逐层覆盖、错误定位、零重试；首次调用前等待、复用不等待 |
@@ -1129,7 +1130,7 @@ README 包含：
 - 分层 TOML 配置、SDK 重试和调用前等待。
 - 强制实体、子串匹配、重叠词及大小写变体的处理规则。
 - 开场白逐条按普通文本处理、文件序号从 0 开始且不生成 id 的约定；世界书原生 id 与从 1 开始的分片文件名位置编号的区别；世界书翻译阶段逐项核对、回填阶段顺序消费的约定。
-- 普通文本和世界书两类实体及翻译请求示例、forced_terms 的来源，以及按类型和术语模式组合的完整系统提示词。
+- 普通文本和世界书两类实体及翻译请求示例、仅世界书实体请求包含的 forced_terms 及其关键词来源，以及按类型和术语模式组合的完整系统提示词。
 - 默认术语翻译、个别词保留原文、统一保留术语三种用法。
 - 局部编辑对子集及跨条目一致性的影响。
 - 存在即跳过规则及完整清理续跑表。
