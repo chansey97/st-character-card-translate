@@ -534,7 +534,7 @@ deduplicate_keys(
 
 ### 5.1 阶段一：字段抽取 `extract`
 
-读取原卡作为输入，确认根对象包含 `data` 对象；明确标记为其他角色卡版本的输入不接受。不做完整 V2 Schema 校验。本阶段不调用 LLM。
+读取原卡作为输入，确认根对象包含 `data` 对象；明确标记为其他角色卡版本的输入不接受。不做完整 V2 Schema 校验。
 
 产物保存到 `fields/`；普通文本对象和世界书条目数组的文件内容示例见 [3.3 文件编号与 JSON 结构](#33-文件编号与-json-结构)。生成规则如下：
 
@@ -707,7 +707,7 @@ forced_terms 是由本分片 keys、secondary_keys 汇总的强制实体清单�
 
 ### 5.3 阶段三：构建全局 glossary `glossary`
 
-全局 glossary 用于统一各分片中的译名，并允许用户修改。本阶段不调用 LLM。
+全局 glossary 用于统一各分片中的译名，并允许用户修改。
 
 产物为 `glossary.json`，顶层是原词到译名的映射对象。目标文件已存在时跳过；否则读取 `entities/` 中实际存在的实体数组文件并汇总：
 
@@ -748,7 +748,7 @@ forced_terms 是由本分片 keys、secondary_keys 汇总的强制实体清单�
 
 全局 glossary 很大，翻译模型只需要当前待译正文匹配到的词条。世界书关键词的译名另存为程序替换关键词所需的词典。
 
-本阶段不调用 LLM。输入为 `fields/` 和全局 `glossary.json`；每个待译文件的产物保存到 `glossary_subsets/<同名文件>`，顶层固定包含两个词典字段：
+输入为 `fields/` 和全局 `glossary.json`；每个待译文件的产物保存到 `glossary_subsets/<同名文件>`，顶层固定包含两个词典字段：
 
 | 字段 | 内容与用途 |
 | --- | --- |
@@ -1099,7 +1099,7 @@ for position, (entry, translated) in enumerate(
 
 ### 5.6 阶段六：回填原卡 `backfill`
 
-本阶段不调用 LLM。输入为原卡和 `translations/` 中的译文文件，产物为完成回填后的完整角色卡 JSON，保存到 `backfill/<原文件名>`。目标存在时跳过。
+输入为原卡和 `translations/` 中的译文文件，产物为完成回填后的完整角色卡 JSON，保存到 `backfill/<原文件名>`。目标存在时跳过。
 
 重新读取原卡作为底稿：
 
