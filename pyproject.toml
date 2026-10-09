@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "st-character-card-translate"
+version = "0.1.0"
+description = "Translate SillyTavern V2-style JSON character cards with a shared glossary."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["openai", "pydantic>=2,<3", "platformdirs>=4"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+st-character-card-translate = "st_character_card_translate.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+st_character_card_translate = ["config.default.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit", "tests/integration"]
+markers = ["live: real API tests; run explicitly with pytest tests/live"]
