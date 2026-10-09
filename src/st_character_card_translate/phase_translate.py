@@ -2,7 +2,7 @@ from pathlib import Path
 
 from .common import (
     BODY_FIELDS, KEY_FIELDS, body_texts, has_text, is_world_file, json_files,
-    read_background, read_json, stage_context, write_json,
+    print_progress, read_background, read_json, stage_context, write_json,
 )
 from .llm import request_json
 from .prompts import translation_prompt
@@ -18,12 +18,16 @@ def translate(
     with stage_context("translate", fields_dir):
         translations_dir.mkdir(parents=True, exist_ok=True)
         paths = json_files(fields_dir)
+    if not paths:
+        print_progress("translate", 0, 0)
     outputs = []
     background = None
-    for path in paths:
+    for index, path in enumerate(paths, start=1):
         output = translations_dir / path.name
         outputs.append(output)
-        if output.exists():
+        skipped = output.exists()
+        print_progress("translate", index, len(paths), path, skipped=skipped)
+        if skipped:
             continue
         with stage_context("translate", path):
             field = read_json(path)

@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 
 from .common import (
-    ENTRY_FIELDS, KEY_FIELDS, entry_filename, read_json, stage_context,
+    ENTRY_FIELDS, KEY_FIELDS, entry_filename, print_progress, read_json, stage_context,
     text_field_locations, world_entries, write_json,
 )
 
@@ -33,23 +33,33 @@ def extract_fields(
                             f"{key}: {term!r}"
                         )
 
+        text_fields = list(text_field_locations(card))
+        greetings = card["data"].get("alternate_greetings") or []
+        chunk_starts = range(0, len(entries), chunk_size)
+        total = len(text_fields) + len(greetings) + len(chunk_starts)
+        if not total:
+            print_progress("extract", 0, 0)
         outputs = []
 
         def save(name, value):
             path = fields_dir / name
             outputs.append(path)
-            if not path.exists():
+            skipped = path.exists()
+            print_progress("extract", len(outputs), total, path, skipped=skipped)
+            if not skipped:
                 write_json(path, value)
 
-        for dotted_path, parent, key in text_field_locations(card):
+        for dotted_path, parent, key in text_fields:
             save(f"{dotted_path}.json", {"text": parent[key]})
-        for index, greeting in enumerate(card["data"].get("alternate_greetings") or []):
+        for index, greeting in enumerate(greetings):
             save(f"data.alternate_greetings_{index}.json", {"text": greeting})
-        for start in range(0, len(entries), chunk_size):
+        for start in chunk_starts:
             end = min(start + chunk_size, len(entries))
             path = fields_dir / entry_filename(start + 1, end, len(entries))
             outputs.append(path)
-            if path.exists():
+            skipped = path.exists()
+            print_progress("extract", len(outputs), total, path, skipped=skipped)
+            if skipped:
                 continue
             chunk = [
                 {key: entry["id"] if key == "id" else entry.get(key) for key in ENTRY_FIELDS}

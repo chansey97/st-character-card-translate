@@ -68,6 +68,16 @@ st-character-card-translate card.json --source-lang en --from-stage backfill
 
 阶段顺序：`extract → discover → glossary → subsets → translate → backfill → deduplicate_keys`。只运行指定区间，不自动补跑上游。成功退出码为 `0`，参数或配置错误为 `2`，阶段失败为 `1`，错误包含阶段与相关路径。
 
+各阶段在处理文件前立即打印当前文件序号、总数和文件名，包括等待模型响应之前：
+
+```text
+[discover] 1/19 data.alternate_greetings_0.json
+[discover] 2/19 data.alternate_greetings_1.json (skipped: exists)
+[discover] 3/19 data.character_book.description.json
+```
+
+序号表示当前处理到的文件，包含跳过项，不表示该文件已经完成。`glossary` 和 `backfill` 的计数包括读入的中间文件及最后写出的结果文件；结果已存在时显示 `1/1` 并标注跳过。没有文件可处理时显示 `0/0 (no files)`。
+
 语言标签只检查非空以及 ASCII 字母、数字和连字符，原样用于目录名和请求。单个开场白始终对应一个文件；分片大小只影响世界书。
 
 ## 检查、编辑与续跑

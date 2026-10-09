@@ -2,7 +2,7 @@ from pathlib import Path
 
 from .common import (
     body_texts, has_text, is_world_file, json_files, nonblank_keywords,
-    read_background, read_json, stage_context, write_json,
+    print_progress, read_background, read_json, stage_context, write_json,
 )
 from .llm import request_json
 from .prompts import discovery_prompt
@@ -17,12 +17,16 @@ def discover_entities(
     with stage_context("discover", fields_dir):
         entities_dir.mkdir(parents=True, exist_ok=True)
         paths = json_files(fields_dir)
+    if not paths:
+        print_progress("discover", 0, 0)
     outputs = []
     background = None
-    for path in paths:
+    for index, path in enumerate(paths, start=1):
         output = entities_dir / path.name
         outputs.append(output)
-        if output.exists():
+        skipped = output.exists()
+        print_progress("discover", index, len(paths), path, skipped=skipped)
+        if skipped:
             continue
         with stage_context("discover", path):
             field = read_json(path)

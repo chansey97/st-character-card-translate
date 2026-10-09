@@ -4,7 +4,7 @@ from pydantic import TypeAdapter
 
 from .common import (
     body_texts, is_world_file, json_files, nonblank_keywords,
-    read_json, stage_context, write_json,
+    print_progress, read_json, stage_context, write_json,
 )
 
 
@@ -14,12 +14,16 @@ def generate_glossary_subsets(
     with stage_context("subsets", fields_dir):
         glossary_subsets_dir.mkdir(parents=True, exist_ok=True)
         paths = json_files(fields_dir)
+    if not paths:
+        print_progress("subsets", 0, 0)
     outputs = []
     glossary = None
-    for path in paths:
+    for index, path in enumerate(paths, start=1):
         output = glossary_subsets_dir / path.name
         outputs.append(output)
-        if output.exists():
+        skipped = output.exists()
+        print_progress("subsets", index, len(paths), path, skipped=skipped)
+        if skipped:
             continue
         with stage_context("subsets", path):
             if glossary is None:

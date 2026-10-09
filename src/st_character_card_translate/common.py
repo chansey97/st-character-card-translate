@@ -56,6 +56,14 @@ def json_files(directory: Path) -> list[Path]:
     return sorted(path for path in directory.iterdir() if path.suffix == ".json")
 
 
+def print_progress(
+    stage: str, index: int, total: int, path: Path | None = None, *, skipped: bool = False,
+) -> None:
+    name = path.name if path is not None else "(no files)"
+    status = " (skipped: exists)" if skipped else ""
+    print(f"[{stage}] {index}/{total} {name}{status}", flush=True)
+
+
 def text_field_locations(card: dict):
     """Yield existing target fields and their mutable parent objects."""
     for dotted_path in TEXT_FIELDS:
