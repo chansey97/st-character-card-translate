@@ -1,5 +1,12 @@
 # SillyTavern 角色卡翻译工具实现方案
 
+- [1. 目标与实现范围](#1-目标与实现范围)
+- [2. 安装、配置与使用](#2-安装配置与使用)
+- [3. 通用数据与文件约定](#3-通用数据与文件约定)
+- [4. 模型调用与工程接口](#4-模型调用与工程接口)
+- [5. 七阶段工作流](#5-七阶段工作流)
+- [6. 验收与交付](#6-验收与交付)
+
 ## 1. 目标与实现范围
 
 实现一个 Python 命令行工具，通过兼容 OpenAI Chat Completions 的 CLI Proxy API，将 JSON 角色卡中的指定内容翻译为目标语言。
@@ -67,7 +74,7 @@ flowchart TD
 
 程序不保证模型逐字遵守所有译名，由人工检查确认。
 
-## 2. CLI、配置与文件契约
+## 2. 安装、配置与使用
 
 ### 2.1 安装与入口
 
@@ -95,7 +102,47 @@ st-character-card-translate --help
 python -m st_character_card_translate --help
 ```
 
-### 2.2 CLI 参数
+### 2.2 典型用法
+
+完整翻译为简体中文（默认目标语言）：
+
+```console
+st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.json --source-lang en
+```
+
+指定目标语言、世界书分片大小和输出父目录：
+
+```console
+st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.json --source-lang en --target-lang ja --chunk-size 10 --output-dir outputs
+```
+
+运行到全局 glossary 生成后暂停：
+
+```console
+st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.json --source-lang en --to-stage glossary
+```
+
+检查或编辑任务目录中的 `glossary.json` 后，从子集生成继续：
+
+```console
+st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.json --source-lang en --from-stage subsets
+```
+
+从翻译阶段继续，并保留术语原文：
+
+```console
+st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.json --source-lang en --from-stage translate --no-translate-glossary
+```
+
+编辑译文后，从回填阶段继续：
+
+```console
+st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.json --source-lang en --from-stage backfill
+```
+
+续跑时保持输入、语言、背景及输出父目录等参数一致；需要更新的旧产物必须先按 [2.6 修改后的清理与续跑](#26-修改后的清理与续跑) 中的表格清理。
+
+### 2.3 CLI 参数
 
 ```text
 st-character-card-translate INPUT_JSON --source-lang LANG [OPTIONS]
@@ -126,96 +173,6 @@ st-character-card-translate INPUT_JSON --source-lang LANG [OPTIONS]
 - 只执行所选区间，不自动补跑上游。
 - `INPUT_JSON` 和 `--source-lang` 在主 CLI 中始终必填，用于确定任务目录。
 
-### 2.3 项目与输出目录
-
-任务目录计算规则：
-
-```python
-task_dir = output_dir / f"{input_json.stem}__{source_lang}_to_{target_lang}"
-```
-
-省略 `--output-dir` 与显式指定 `--output-dir ./` 等价。相对路径均基于当前工作目录。
-
-以下展示英文角色卡样例  `examples/main_the-shining-stone-3ab47f90d0c6_json.json`    `Blood.of.Zeus.S01E01.srt` 翻译为简体中文的例子。
-
-使用默认分片参数 `--chunk-size 10`。目录树同时展示源码、测试、配置及运行产物；尚未实现的目录和文件属于交付结构。
-
-```text
-./
-├── .venv/
-├── main_the-shining-stone-3ab47f90d0c6_json__en_to_zh-Hans/
-│   ├── fields/
-│   │   ├── data.description.json
-│   │   ├── data.personality.json
-│   │   ├── data.first_mes.json
-│   │   ├── data.mes_example.json
-│   │   ├── data.scenario.json
-│   │   ├── data.creator_notes.json
-│   │   ├── data.system_prompt.json
-│   │   ├── data.post_history_instructions.json
-│   │   ├── data.alternate_greetings_0.json
-│   │   ├── data.alternate_greetings_1.json
-│   │   ├── data.character_book.description.json
-│   │   ├── data.character_book.entries_000001_000010.json
-│   │   ├── ...                         # 中间分片至 000061_000070
-│   │   └── data.character_book.entries_000071_000071.json
-│   ├── entities/                       # 与 fields 使用相同文件名
-│   │   ├── data.description.json
-│   │   ├── data.alternate_greetings_0.json
-│   │   ├── data.character_book.entries_000001_000010.json
-│   │   └── ...
-│   ├── glossary.json
-│   ├── glossary_subsets/               # 与 fields 使用相同文件名
-│   │   ├── data.description.json
-│   │   ├── data.alternate_greetings_0.json
-│   │   ├── data.character_book.entries_000001_000010.json
-│   │   └── ...
-│   ├── translations/                   # 与 fields 使用相同文件名
-│   │   ├── data.description.json
-│   │   ├── data.alternate_greetings_0.json
-│   │   ├── data.character_book.entries_000001_000010.json
-│   │   └── ...
-│   ├── backfill/
-│   │   └── main_the-shining-stone-3ab47f90d0c6_json.json
-│   └── deduplicate_keys/
-│       └── main_the-shining-stone-3ab47f90d0c6_json.json
-├── examples/
-│   └── main_the-shining-stone-3ab47f90d0c6_json.json
-├── src/
-│   └── st_character_card_translate/
-│       ├── __init__.py
-│       ├── __main__.py
-│       ├── cli.py                      # 参数、客户端和七阶段调度
-│       ├── config.py                   # 配置加载与校验
-│       ├── config.default.toml         # 打包进 Python 包的默认配置
-│       ├── schemas.py                  # 模型响应 Schema
-│       ├── common.py                   # 共用的 JSON、路径和字段处理
-│       ├── llm.py                      # 等待、请求和响应解析
-│       ├── prompts.py                  # 完整系统提示词
-│       ├── phase_extract_fields.py
-│       ├── phase_discover_entities.py
-│       ├── phase_build_glossary.py
-│       ├── phase_generate_glossary_subsets.py
-│       ├── phase_translate.py
-│       ├── phase_backfill.py
-│       └── phase_deduplicate_keys.py
-├── tests/
-│   ├── unit/
-│   ├── integration/
-│   └── live/
-├── test_outputs/                        # 真实 API 测试产物，保留供检查
-│   └── live/
-│       └── <run_id>/
-│           └── <case_name>/
-├── pyproject.toml
-├── PLAN.md
-└── README.md
-```
-
-同一个待译文件在 `fields`、`entities`、`glossary_subsets`、`translations` 中使用相同 JSON 文件名，由目录名区分用途。`backfill` 保存未去重的完整卡，`deduplicate_keys` 保存最终卡，两者均保留原文件名。
-
-不同目录中的同名输入，如果语言组合相同，仍会得到相同任务目录名。这种情况下，用户应通过不同输出父目录区分，不引入路径 hash。
-
 ### 2.4 分层 TOML 配置
 
 包内 `config.default.toml`：
@@ -245,7 +202,94 @@ max_retries = 2
 - `--help` 不读取配置。
 - API 客户端只在模型阶段按需创建。
 
-### 2.5 处理字段
+### 2.5 复用规则
+
+所有阶段均只按目标文件是否存在决定跳过，不为此读取或检查文件内容。
+
+使用上游产物时正常读取，损坏 JSON 此时才报错。各阶段不预先审计整个任务的产物完整性。例如，构建 glossary 只汇总实际存在的实体文件。
+
+回填时，对开场白按原位置构造文件名读取，对世界书按分片文件名及片内数组顺序消费译文；不重复执行翻译阶段的世界书条目数或 `id` 检查。
+
+人工修改应保持文件结构与文件名。开场白文件名序号须对应原数组位置；世界书分片须保持条目数量、顺序及原生 `id`，不得重编号。
+
+### 2.6 修改后的清理与续跑
+
+以下操作均限于当前任务目录，由用户执行；程序不自动删除文件。
+
+| 修改内容 | 删除的产物与续跑阶段 |
+| --- | --- |
+| 原卡、输入编码、世界书分片大小 | 清空任务目录，或换输出父目录，从 `extract` 重跑 |
+| 源语言或目标语言 | 清空任务目录，或换输出父目录，从 `extract` 开始 |
+| 背景、模型、实体提示词、fields 内容 | 删除 entities 及其全部下游，从 `discover` 继续 |
+| entities | 删除 glossary 及其全部下游，从 `glossary` 继续 |
+| 全局 glossary | 删除 subsets、translations、回填卡、去重卡，从 `subsets` 继续 |
+| 子集文件结构或生成规则 | 删除 subsets、translations、回填卡、去重卡，从 `subsets` 继续 |
+| 某个子集文件中的 glossary 或 keywords_glossary | 保留该子集；删除同名译文、回填卡、去重卡，从 `translate` 继续 |
+| 术语模式、翻译提示词 | 删除 translations、回填卡、去重卡，从 `translate` 继续 |
+| 某个 translations 文件 | 删除回填卡、去重卡，从 `backfill` 继续 |
+| 回填卡 | 删除去重卡，从 `deduplicate_keys` 继续 |
+| 最终去重卡 | 保留编辑后的文件即可 |
+
+跨条目统一改名应修改全局 glossary，再重建全部子集和译文。
+
+## 3. 通用数据与文件约定
+
+### 3.1 任务目录与产物
+
+任务目录计算规则：
+
+```python
+task_dir = output_dir / f"{input_json.stem}__{source_lang}_to_{target_lang}"
+```
+
+省略 `--output-dir` 与显式指定 `--output-dir ./` 等价。相对路径均基于当前工作目录。
+
+以下以 `examples/main_the-shining-stone-3ab47f90d0c6_json.json` 从英语翻译为简体中文为例，使用默认分片参数 `--chunk-size 10`。任务目录及产物如下：
+
+```text
+main_the-shining-stone-3ab47f90d0c6_json__en_to_zh-Hans/
+├── fields/
+│   ├── data.description.json
+│   ├── data.personality.json
+│   ├── data.first_mes.json
+│   ├── data.mes_example.json
+│   ├── data.scenario.json
+│   ├── data.creator_notes.json
+│   ├── data.system_prompt.json
+│   ├── data.post_history_instructions.json
+│   ├── data.alternate_greetings_0.json
+│   ├── data.alternate_greetings_1.json
+│   ├── data.character_book.description.json
+│   ├── data.character_book.entries_000001_000010.json
+│   ├── ...                         # 中间分片至 000061_000070
+│   └── data.character_book.entries_000071_000071.json
+├── entities/                       # 与 fields 使用相同文件名
+│   ├── data.description.json
+│   ├── data.alternate_greetings_0.json
+│   ├── data.character_book.entries_000001_000010.json
+│   └── ...
+├── glossary.json
+├── glossary_subsets/               # 与 fields 使用相同文件名
+│   ├── data.description.json
+│   ├── data.alternate_greetings_0.json
+│   ├── data.character_book.entries_000001_000010.json
+│   └── ...
+├── translations/                   # 与 fields 使用相同文件名
+│   ├── data.description.json
+│   ├── data.alternate_greetings_0.json
+│   ├── data.character_book.entries_000001_000010.json
+│   └── ...
+├── backfill/
+│   └── main_the-shining-stone-3ab47f90d0c6_json.json
+└── deduplicate_keys/
+    └── main_the-shining-stone-3ab47f90d0c6_json.json
+```
+
+同一个待译文件在 `fields`、`entities`、`glossary_subsets`、`translations` 中使用相同 JSON 文件名，由目录名区分用途。`backfill` 保存未去重的完整卡，`deduplicate_keys` 保存最终卡，两者均保留原文件名。
+
+不同目录中的同名输入，如果语言组合相同，仍会得到相同任务目录名。这种情况下，用户应通过不同输出父目录区分，不引入路径 hash。
+
+### 3.2 处理字段
 
 普通字符串字段，各生成一个文件：
 
@@ -282,7 +326,7 @@ data.character_book.description
 | -------- | ---------- |
 | 其他字段 | 保留原卡值 |
 
-### 2.6 文件编号与 JSON 结构
+### 3.3 文件编号与 JSON 结构
 
 开场白按原数组位置生成文件：
 
@@ -335,7 +379,7 @@ data.character_book.description
 
 `translations` 使用对应的同一种结构。其中世界书的 `name` 由程序从 `fields` 复制，关键词由程序替换，正文来自翻译结果。回填仍以原卡的字段存在情况为准，不将中间结构中的 `null` 补写成新字段。
 
-### 2.7 编码与空内容
+### 3.4 编码与空内容
 
 - 原角色卡默认以 `utf-8-sig` 读取，兼容带 BOM 和不带 BOM 的 UTF-8。
 
@@ -355,13 +399,142 @@ data.character_book.description
 
   注：通过 sillytavern 世界书编辑器修改关键词，首尾空白会在保存时被去除，因此不可能存在纯空白字符串。sillytavern 也不会使用空字符串关键字也不会被使用。后续的强制实体规则会忽略空字符串和纯空白字符串。
 
-## 3. 七阶段工作流
+## 4. 模型调用与工程接口
 
-### 3.1 阶段一：字段抽取 `extract`
+### 4.1 项目结构
+
+以下为源码、测试与配置的项目结构；尚未实现的目录和文件属于交付结构。任务目录及其产物见 [3.1 任务目录与产物](#31-任务目录与产物)。
+
+```text
+./
+├── .venv/
+├── examples/
+│   └── main_the-shining-stone-3ab47f90d0c6_json.json
+├── src/
+│   └── st_character_card_translate/
+│       ├── __init__.py
+│       ├── __main__.py
+│       ├── cli.py                      # 参数、客户端和七阶段调度
+│       ├── config.py                   # 配置加载与校验
+│       ├── config.default.toml         # 打包进 Python 包的默认配置
+│       ├── schemas.py                  # 模型响应 Schema
+│       ├── common.py                   # 共用的 JSON、路径和字段处理
+│       ├── llm.py                      # 等待、请求和响应解析
+│       ├── prompts.py                  # 完整系统提示词
+│       ├── phase_extract_fields.py
+│       ├── phase_discover_entities.py
+│       ├── phase_build_glossary.py
+│       ├── phase_generate_glossary_subsets.py
+│       ├── phase_translate.py
+│       ├── phase_backfill.py
+│       └── phase_deduplicate_keys.py
+├── tests/
+│   ├── unit/
+│   ├── integration/
+│   └── live/
+├── test_outputs/                        # 真实 API 测试产物，保留供检查
+│   └── live/
+│       └── <run_id>/
+│           └── <case_name>/
+├── pyproject.toml
+├── PLAN.md
+└── README.md
+```
+
+### 4.2 请求和响应 Schema
+
+使用 `client.chat.completions.create`：
+
+- `stream=False`。
+- `response_format.type="json_schema"`。
+- `json_schema.strict=True`。
+- 沿用 SDK 默认超时，不主动设置采样参数或推理预算。
+- system 消息使用阶段提示词。
+- user 消息使用 `json.dumps(request, ensure_ascii=False)`。
+
+通过 Pydantic 定义响应字段并生成 Schema。所有对象禁止额外字段，所有字段必填；可空字段使用 `str | None` 且不设置默认值。严格结构化输出允许通过必填的可空字段表达可选值。[OpenAI Structured Outputs 文档](https://developers.openai.com/api/docs/guides/structured-outputs)
+
+| 响应类型 | 根对象 |
+| --- | --- |
+| 实体发现 | `{"entities": [九字段实体]}` |
+| 翻译 普通文本（含单条开场白） | `{"text": "译文"}` |
+| 翻译 世界书正文 | `{"entries": [{"id": 42, "content": "译文", "comment": null}]}` |
+
+### 4.3 等待与失败
+
+`llm.py` 在每次 `client.chat.completions.create` 前，根据 `delay_between_requests` 等待秒数，包括第一次调用。
+
+- 单位为秒，默认 0.0。
+- 两个模型阶段共用此规则。
+
+JSON 解析失败、异常结束、强制实体遗漏、新译文错位、必要数据缺失或文件读写失败时，报告阶段、相关路径和原因并停止。已有产物保留，由用户修正或删除后续跑。
+
+主 CLI 成功返回 `0`；参数或配置错误返回 `2`；运行阶段失败返回 `1`。
+
+### 4.4 模块与阶段接口
+
+源码放在 `src/st_character_card_translate/`。每个阶段对应一个模块；阶段模块之间不互相调用，由 CLI 串接：
+
+| 模块 | 入口 |
+| --- | --- |
+| `phase_extract_fields.py` | `extract_fields` |
+| `phase_discover_entities.py` | `discover_entities` |
+| `phase_build_glossary.py` | `build_glossary` |
+| `phase_generate_glossary_subsets.py` | `generate_glossary_subsets` |
+| `phase_translate.py` | `translate` |
+| `phase_backfill.py` | `backfill` |
+| `phase_deduplicate_keys.py` | `deduplicate_keys` |
+
+接口如下：
+
+```text
+extract_fields(
+    card_path, fields_dir, *,
+    chunk_size=10, input_encoding="utf-8-sig"
+) -> list[Path]
+
+discover_entities(
+    fields_dir, entities_dir, *,
+    source_lang, target_lang, client, model,
+    background_path=None, delay_between_requests=0.0
+) -> list[Path]
+
+build_glossary(
+    entities_dir, glossary_path
+) -> Path
+
+generate_glossary_subsets(
+    fields_dir, glossary_path, glossary_subsets_dir
+) -> list[Path]
+
+translate(
+    fields_dir, glossary_subsets_dir, translations_dir, *,
+    source_lang, target_lang, client, model,
+    background_path=None, no_translate_glossary=False,
+    delay_between_requests=0.0
+) -> list[Path]
+
+backfill(
+    card_path, translations_dir, output_path, *,
+    input_encoding="utf-8-sig"
+) -> Path
+
+deduplicate_keys(
+    card_path, output_path
+) -> Path
+```
+
+路径使用 Path，返回产物路径；client 可替换为假客户端。
+
+每个阶段创建自己的输出目录，即使没有待处理文件。
+
+## 5. 七阶段工作流
+
+### 5.1 阶段一：字段抽取 `extract`
 
 读取原卡，确认根对象包含 `data` 对象；明确标记为其他角色卡版本的输入不接受。不做完整 V2 Schema 校验。
 
-按第 2 节生成 `fields`：
+按 [3. 通用数据与文件约定](#3-通用数据与文件约定) 生成 `fields`：
 
 - 普通字段保存为 `{text}`。
 - 每条开场白按从 `0` 开始的文件名序号单独保存为 `{text}`。
@@ -374,7 +547,7 @@ data.character_book.description
 
 识别采用首尾斜线及尾部字母 flags 的形式检查，不执行表达式，不引入 JavaScript 正则引擎。正文中出现正则示例不因此拒绝整卡。
 
-### 3.2 阶段二：实体发现、译名和打分 `discover`
+### 5.2 阶段二：实体发现、译名和打分 `discover`
 
 按 `fields` 文件名排序处理。每个文件对应一个同名实体数组。
 
@@ -530,7 +703,7 @@ forced_terms 是由本分片 keys、secondary_keys 汇总的强制实体清单�
 汇总整个分片的实体，返回一个 entities 数组。只有 forced_terms 为空且正文中没有合适实体时，entities 才可以为空数组。
 ```
 
-### 3.3 阶段三：构建全局 glossary `glossary`
+### 5.3 阶段三：构建全局 glossary `glossary`
 
 全局 glossary 用于统一各分片中的译名，并允许用户修改。
 
@@ -569,7 +742,7 @@ glossary.json 已存在时跳过；否则汇总  `entities` 目录中实际存�
 
 用户可以将值设为原词或其他语言的字符串；后续翻译应使用该值，不再次翻译它。
 
-### 3.4 阶段四：匹配生成 glossary 子集 `subsets`
+### 5.4 阶段四：匹配生成 glossary 子集 `subsets`
 
 全局 glossary 很大，翻译模型只需要当前待译正文匹配到的词条。世界书关键词的译名另存为程序替换关键词所需的词典。
 
@@ -643,7 +816,7 @@ data.character_book.entries_000002_000002.json
 
 实体阶段，LLM 可能漏抽了 data.character_book.entries_000001_000001.json 中 Ailin，导致 `entities` 里对应的同名 JSON 文件没有 `"source": "Ailin"`。于是，如果是采用了 `entities` 中对应的同名 JSON 文件里的 source 来构造正文词典，会导致漏掉词汇。SillyTavern 运行时，如果 id=1 的 lore entry 触发，Ailin 会进入上下文。由于 Ailin 是一个关键词，会级联触发 id=2 的 lore entry。这意味着 Ailin 必须被统一翻译，它必须进入子集的 `glossary` 字典。
 
-本例同时作为跨世界书分片的回归用例，测试设置与断言见 [5.3 自动测试](#53-自动测试)。
+本例同时作为跨世界书分片的回归用例，测试设置与断言见 [6.1 自动测试](#61-自动测试)。
 
 构造 `glossary` 的匹配规则：
 
@@ -695,7 +868,7 @@ subset = {
 
 需要全卡统一改名时，应修改全局 glossary 并重建全部相关下游产物。
 
-### 3.5 阶段五：翻译 `translate`
+### 5.5 阶段五：翻译 `translate`
 
 按 `fields` 文件名排序处理。目标译文已存在时立即跳过；否则读取原文和同名子集文件，其中 `glossary` 用于正文请求，`keywords_glossary` 用于程序替换世界书关键词。
 
@@ -905,7 +1078,7 @@ for position, (entry, translated) in enumerate(
 
 **空正文处理：**文件中没有可译正文时，不调用翻译模型，但仍读取同名子集并保存完整译文产物。普通字段及单条开场白直接保存原 `text`；世界书在默认术语模式下仍通过 `keywords_glossary` 替换关键词，保留术语模式下原样复制关键词，不因正文或 `glossary` 为空而跳过。
 
-### 3.6 阶段六：回填原卡 `backfill`
+### 5.6 阶段六：回填原卡 `backfill`
 
 输出为 `backfill/<原文件名>`。目标存在时跳过。
 
@@ -927,7 +1100,7 @@ for position, (entry, translated) in enumerate(
 
 明确需要的文件、字段或位置无法读取时按普通读取错误停止。完成整卡回填后才写文件。
 
-### 3.7 阶段七：关键词去重 `deduplicate_keys`
+### 5.7 阶段七：关键词去重 `deduplicate_keys`
 
 读取回填卡，输出到 `deduplicate_keys/<原文件名>`。目标存在时跳过。
 
@@ -954,146 +1127,9 @@ for position, (entry, translated) in enumerate(
 
 此阶段不调用 LLM，不修改回填卡或译文文件。
 
-## 4. 模型调用与工程接口
+## 6. 验收与交付
 
-### 4.1 请求和响应 Schema
-
-使用 `client.chat.completions.create`：
-
-- `stream=False`。
-- `response_format.type="json_schema"`。
-- `json_schema.strict=True`。
-- 沿用 SDK 默认超时，不主动设置采样参数或推理预算。
-- system 消息使用阶段提示词。
-- user 消息使用 `json.dumps(request, ensure_ascii=False)`。
-
-通过 Pydantic 定义响应字段并生成 Schema。所有对象禁止额外字段，所有字段必填；可空字段使用 `str | None` 且不设置默认值。严格结构化输出允许通过必填的可空字段表达可选值。[OpenAI Structured Outputs 文档](https://developers.openai.com/api/docs/guides/structured-outputs)
-
-| 响应类型 | 根对象 |
-| --- | --- |
-| 实体发现 | `{"entities": [九字段实体]}` |
-| 翻译 普通文本（含单条开场白） | `{"text": "译文"}` |
-| 翻译 世界书正文 | `{"entries": [{"id": 42, "content": "译文", "comment": null}]}` |
-
-### 4.2 等待与失败
-
-`llm.py` 在每次 `client.chat.completions.create` 前，根据 `delay_between_requests` 等待秒数，包括第一次调用。
-
-- 单位为秒，默认 0.0。
-- 两个模型阶段共用此规则。
-
-JSON 解析失败、异常结束、强制实体遗漏、新译文错位、必要数据缺失或文件读写失败时，报告阶段、相关路径和原因并停止。已有产物保留，由用户修正或删除后续跑。
-
-主 CLI 成功返回 `0`；参数或配置错误返回 `2`；运行阶段失败返回 `1`。
-
-### 4.3 模块与阶段接口
-
-源码放在 `src/st_character_card_translate/`。每个阶段对应一个模块；阶段模块之间不互相调用，由 CLI 串接：
-
-| 模块 | 入口 |
-| --- | --- |
-| `phase_extract_fields.py` | `extract_fields` |
-| `phase_discover_entities.py` | `discover_entities` |
-| `phase_build_glossary.py` | `build_glossary` |
-| `phase_generate_glossary_subsets.py` | `generate_glossary_subsets` |
-| `phase_translate.py` | `translate` |
-| `phase_backfill.py` | `backfill` |
-| `phase_deduplicate_keys.py` | `deduplicate_keys` |
-
-接口如下：
-
-```text
-extract_fields(
-    card_path, fields_dir, *,
-    chunk_size=10, input_encoding="utf-8-sig"
-) -> list[Path]
-
-discover_entities(
-    fields_dir, entities_dir, *,
-    source_lang, target_lang, client, model,
-    background_path=None, delay_between_requests=0.0
-) -> list[Path]
-
-build_glossary(
-    entities_dir, glossary_path
-) -> Path
-
-generate_glossary_subsets(
-    fields_dir, glossary_path, glossary_subsets_dir
-) -> list[Path]
-
-translate(
-    fields_dir, glossary_subsets_dir, translations_dir, *,
-    source_lang, target_lang, client, model,
-    background_path=None, no_translate_glossary=False,
-    delay_between_requests=0.0
-) -> list[Path]
-
-backfill(
-    card_path, translations_dir, output_path, *,
-    input_encoding="utf-8-sig"
-) -> Path
-
-deduplicate_keys(
-    card_path, output_path
-) -> Path
-```
-
-路径使用 Path，返回产物路径；client 可替换为假客户端。
-
-每个阶段创建自己的输出目录，即使没有待处理文件。
-
-## 5. 产物复用、验收与交付
-
-### 5.1 复用规则
-
-所有阶段均只按目标文件是否存在决定跳过，不为此读取或检查文件内容。
-
-使用上游产物时正常读取，损坏 JSON 此时才报错。各阶段不预先审计整个任务的产物完整性。例如，构建 glossary 只汇总实际存在的实体文件。
-
-回填时，对开场白按原位置构造文件名读取，对世界书按分片文件名及片内数组顺序消费译文；不重复执行翻译阶段的世界书条目数或 `id` 检查。
-
-人工修改应保持文件结构与文件名。开场白文件名序号须对应原数组位置；世界书分片须保持条目数量、顺序及原生 `id`，不得重编号。
-
-### 5.2 修改后的清理与续跑
-
-以下操作均限于当前任务目录，由用户执行；程序不自动删除文件。
-
-| 修改内容 | 删除的产物与续跑阶段 |
-| --- | --- |
-| 原卡、输入编码、世界书分片大小 | 清空任务目录，或换输出父目录，从 `extract` 重跑 |
-| 源语言或目标语言 | 清空任务目录，或换输出父目录，从 `extract` 开始 |
-| 背景、模型、实体提示词、fields 内容 | 删除 entities 及其全部下游，从 `discover` 继续 |
-| entities | 删除 glossary 及其全部下游，从 `glossary` 继续 |
-| 全局 glossary | 删除 subsets、translations、回填卡、去重卡，从 `subsets` 继续 |
-| 子集文件结构或生成规则 | 删除 subsets、translations、回填卡、去重卡，从 `subsets` 继续 |
-| 某个子集文件中的 glossary 或 keywords_glossary | 保留该子集；删除同名译文、回填卡、去重卡，从 `translate` 继续 |
-| 术语模式、翻译提示词 | 删除 translations、回填卡、去重卡，从 `translate` 继续 |
-| 某个 translations 文件 | 删除回填卡、去重卡，从 `backfill` 继续 |
-| 回填卡 | 删除去重卡，从 `deduplicate_keys` 继续 |
-| 最终去重卡 | 保留编辑后的文件即可 |
-
-跨条目统一改名应修改全局 glossary，再重建全部子集和译文。
-
-典型用法：
-
-```console
-st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.json --source-lang en
-
-st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.json --source-lang en --target-lang ja --chunk-size 10 --output-dir outputs
-
-st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.json --source-lang en --to-stage glossary
-
-st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.json --source-lang en --from-stage subsets
-
-st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.json --source-lang en --from-stage translate --no-translate-glossary
-
-st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.json --source-lang en --from-stage backfill
-```
-
-续跑时保持输入、语言、背景及输出父目录等参数一致；需要更新的旧产物必须先按表清理。
-
-### 5.3 自动测试
+### 6.1 自动测试
 
 使用 `pytest`，默认仅运行 `tests/unit` 和 `tests/integration`。
 
@@ -1122,7 +1158,7 @@ st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.js
 - 世界书的新响应先检查数量，再逐项比较 `id`；漏条、多条或不同 `id` 的换位使该片不落盘，后续模型调用不发生。开场白使用普通文本 Schema，不进行数组或 `id` 对照。
 - 回填直接消费已有译文，不用 `id` 修正人工重排；开场白对应文件缺失或世界书译文不足时，通过普通读取失败，且尚未写出新卡。
 
-必须将 [3.4 的跨世界书分片示例](#34-阶段四匹配生成-glossary-子集-subsets)（`Moonshadow City` 与 `Ailin`）作为回归用例，沿用其中的两个分片和条目 `id`：
+必须将 [5.4 的跨世界书分片示例](#54-阶段四匹配生成-glossary-子集-subsets)（`Moonshadow City` 与 `Ailin`）作为回归用例，沿用其中的两个分片和条目 `id`：
 
 - 测试设置：`id=1` 所在分片的实体响应故意遗漏 `Ailin`；`id=2` 所在分片仍按强制实体规则返回 `Ailin`。
 - 验证全局 glossary 包含 `Ailin`，其译名来自 `id=2` 所在分片的强制实体。
@@ -1135,7 +1171,7 @@ st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.js
 
 现有样例包含 2 条开场白、71 条世界书记录；开场白生成 `data.alternate_greetings_0.json` 和 `data.alternate_greetings_1.json`，默认参数下世界书生成 8 个分片，最后一片为 `data.character_book.entries_000071_000071.json`。
 
-### 5.4 真实 API 测试与人工检查
+### 6.2 真实 API 测试与人工检查
 
 真实测试放在 `tests/live`，通过显式指定目录运行：
 
@@ -1156,7 +1192,7 @@ test_outputs/live/<含微秒的运行时间戳>/<case_name>/
 
 人工检查译文语言、可读性、术语采用情况，以及宏、标签和格式的保留。不用固定译文措辞作为断言，不以假客户端测试声称已经验证实际递归触发。
 
-### 5.5 README 交付要求
+### 6.3 README 交付要求
 
 README 包含：
 
