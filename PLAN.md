@@ -607,6 +607,8 @@ glossary.json 已存在时跳过；否则汇总  `entities` 目录中实际存�
 
 **注意：子集中的 `glossary` 不能仅仅通过待译文件在 `entities` 中对应的同名 JSON 文件来得到。**
 
+**跨世界书分片示例：`Moonshadow City` 与 `Ailin`**
+
 假设 `fields` 里有两个世界书分片：
 
 data.character_book.entries_000001_000001.json
@@ -640,6 +642,8 @@ data.character_book.entries_000002_000002.json
 ```
 
 实体阶段，LLM 可能漏抽了 data.character_book.entries_000001_000001.json 中 Ailin，导致 `entities` 里对应的同名 JSON 文件没有 `"source": "Ailin"`。于是，如果是采用了 `entities` 中对应的同名 JSON 文件里的 source 来构造正文词典，会导致漏掉词汇。SillyTavern 运行时，如果 id=1 的 lore entry 触发，Ailin 会进入上下文。由于 Ailin 是一个关键词，会级联触发 id=2 的 lore entry。这意味着 Ailin 必须被统一翻译，它必须进入子集的 `glossary` 字典。
+
+本例同时作为跨世界书分片的回归用例，测试设置与断言见 [5.3 自动测试](#53-自动测试)。
 
 构造 `glossary` 的匹配规则：
 
@@ -1118,14 +1122,12 @@ st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.js
 - 世界书的新响应先检查数量，再逐项比较 `id`；漏条、多条或不同 `id` 的换位使该片不落盘，后续模型调用不发生。开场白使用普通文本 Schema，不进行数组或 `id` 对照。
 - 回填直接消费已有译文，不用 `id` 修正人工重排；开场白对应文件缺失或世界书译文不足时，通过普通读取失败，且尚未写出新卡。
 
-必须增加一个跨世界书分片的回归用例：
+必须将 [3.4 的跨世界书分片示例](#34-阶段四匹配生成-glossary-子集-subsets)（`Moonshadow City` 与 `Ailin`）作为回归用例，沿用其中的两个分片和条目 `id`：
 
-- Entry A 的关键词只有 `Moonshadow City`，正文提到 `Ailin`。
-- Entry B 的关键词为 `Ailin`，位于另一个分片。
-- A 的实体响应故意遗漏 `Ailin`。
-- B 的强制实体使全局 glossary 包含 `Ailin`。
-- A 的子集 `glossary` 仍包含 `Ailin`，B 的子集 `keywords_glossary` 包含 `Ailin`，两者来自同一全局译名。
-- 假客户端验证 A 的翻译请求收到该词译名，B 的关键词由程序按其 `keywords_glossary` 替换。
+- 测试设置：`id=1` 所在分片的实体响应故意遗漏 `Ailin`；`id=2` 所在分片仍按强制实体规则返回 `Ailin`。
+- 验证全局 glossary 包含 `Ailin`，其译名来自 `id=2` 所在分片的强制实体。
+- 验证 `id=1` 所在分片的子集 `glossary` 和 `id=2` 所在分片的子集 `keywords_glossary` 均包含 `Ailin`，且使用同一全局译名。
+- 用假客户端验证 `id=1` 所在分片的翻译请求收到该词译名，并验证 `id=2` 所在分片的关键词由程序按其 `keywords_glossary` 替换。
 
 另外增加关键词未在本片正文中出现的用例：该词进入 `keywords_glossary`，不进入 `glossary`，也不进入翻译请求，但仍由程序用其译名替换译文关键词数组中的对应元素。分别覆盖 `keys` 和 `secondary_keys`。
 
