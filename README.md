@@ -2,6 +2,35 @@
 
 通过兼容 OpenAI Chat Completions 的 CLI Proxy API 翻译 V2 风格 JSON 角色卡。七阶段流程依次抽取字段、发现实体、统一译名、生成术语子集、翻译、回填、去重世界书关键词。最终角色卡保留未知字段和扩展。
 
+```mermaid
+flowchart TD
+    A[原始角色卡 JSON] --> B["1. extract：抽取字段"]
+    B --> C["fields/"]
+    C --> D["2. discover：实体发现、译名和打分<br/>调用 LLM"]
+    D --> E["entities/"]
+    E --> F["3. glossary：统一译名"]
+    F --> G["glossary.json"]
+    C --> H["4. subsets：匹配正文术语、收集关键词译名"]
+    G --> H
+    H --> I["glossary_subsets/"]
+    C --> J["5. translate：翻译<br/>LLM 翻译正文，程序替换关键词<br/>核对世界书条目数和逐项 id"]
+    I --> J
+    J --> K["translations/"]
+    A --> L["6. backfill：回填原卡"]
+    K --> L
+    L --> M["backfill/原文件名.json"]
+    M --> N["7. deduplicate_keys：关键词去重"]
+    N --> O["deduplicate_keys/原文件名.json"]
+    Z["可选背景文本 .txt"] -.-> D
+    Z -.-> J
+    G -.-> R["可选：编辑全局 glossary"]
+    R -.-> H
+    I -.-> S["可选：编辑当前文件的 glossary 子集"]
+    S -.-> J
+```
+
+最终产物是 `deduplicate_keys/` 中的角色卡。
+
 ## 安装
 
 需要 Python 3.11 或以上版本：
