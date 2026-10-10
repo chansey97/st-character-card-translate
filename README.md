@@ -67,7 +67,11 @@ python -c "from platformdirs import user_config_path; print(user_config_path('st
 
 ## 使用
 
-源语言必填，目标语言默认为简体中文：
+源语言和目标语言使用 **BCP 47 语言标签**，例如 `en`（英语）、`ja`（日语）、`zh-Hans`（简体中文）、`zh-Hant`（繁体中文）。源语言必填，目标语言默认为 `zh-Hans`。
+
+### 典型用法
+
+完整翻译为简体中文，并将任务产物保存到 `outputs/` 下：
 
 ```console
 st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.json --source-lang en --output-dir outputs
@@ -75,18 +79,44 @@ st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.js
 
 任务目录为 `<输出父目录>/<输入文件名去扩展名>__<源语言>_to_<目标语言>/`。省略 `--output-dir` 时使用当前目录作为父目录。最终角色卡位于任务目录的 `deduplicate_keys/<原文件名>`；`backfill/` 保留去重前的角色卡。
 
+指定目标语言为日语、世界书每片最多 10 条，并设置输出父目录：
+
 ```console
-st-character-card-translate card.json --source-lang en --target-lang ja --chunk-size 10 --background background.txt --config-file api.toml --output-dir outputs
-st-character-card-translate card.json --source-lang en --to-stage glossary
-st-character-card-translate card.json --source-lang en --from-stage subsets
-st-character-card-translate card.json --source-lang en --from-stage translate --no-translate-glossary
-st-character-card-translate card.json --source-lang en --from-stage backfill
+st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.json --source-lang en --target-lang ja --chunk-size 10 --output-dir outputs
 ```
+
+运行到全局术语表生成后暂停，便于检查和统一译名：
+
+```console
+st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.json --source-lang en --output-dir outputs --to-stage glossary
+```
+
+检查或编辑任务目录中的 `glossary.json` 后，从术语子集生成继续：
+
+```console
+st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.json --source-lang en --output-dir outputs --from-stage subsets
+```
+
+从翻译阶段继续，并保留术语及世界书关键词的原文：
+
+```console
+st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.json --source-lang en --output-dir outputs --from-stage translate --no-translate-glossary
+```
+
+编辑任务目录中 `translations/` 下的译文后，从回填阶段继续：
+
+```console
+st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.json --source-lang en --output-dir outputs --from-stage backfill
+```
+
+续跑时保持输入、语言、背景及输出父目录等参数一致；修改后需要更新的旧产物，须先按[检查、编辑与续跑](#检查编辑与续跑)中的表格清理。
+
+### CLI 参数
 
 | 参数 | 默认值 | 用途 |
 | --- | --- | --- |
-| `--source-lang LANG` | 必填 | 源语言标签 |
-| `--target-lang LANG` | `zh-Hans` | 目标语言标签 |
+| `--source-lang LANG` | 必填 | 源语言 BCP 47 标签 |
+| `--target-lang LANG` | `zh-Hans` | 目标语言 BCP 47 标签 |
 | `--output-dir PATH` | 当前目录 | 输出父目录，始终追加任务目录 |
 | `--background PATH` | 无 | UTF-8 文本背景及文风参考，允许 BOM |
 | `--config-file PATH` | 无 | 最高优先级的 TOML 配置 |
@@ -98,16 +128,6 @@ st-character-card-translate card.json --source-lang en --from-stage backfill
 | `--to-stage NAME` | `deduplicate_keys` | 结束阶段，包含该阶段 |
 
 阶段顺序：`extract → discover → glossary → subsets → translate → backfill → deduplicate_keys`。只运行指定区间，不自动补跑上游。成功退出码为 `0`，参数或配置错误为 `2`，阶段失败为 `1`，错误包含阶段与相关路径。
-
-各阶段在处理文件前立即打印当前文件序号、总数和文件名，包括等待模型响应之前：
-
-```text
-[discover] 1/19 data.alternate_greetings_0.json
-[discover] 2/19 data.alternate_greetings_1.json (skipped: exists)
-[discover] 3/19 data.character_book.description.json
-```
-
-序号表示当前处理到的文件，包含跳过项，不表示该文件已经完成。`glossary` 和 `backfill` 的计数包括读入的中间文件及最后写出的结果文件；结果已存在时显示 `1/1` 并标注跳过。没有文件可处理时显示 `0/0 (no files)`。
 
 语言标签只检查非空以及 ASCII 字母、数字和连字符，原样用于目录名和请求。单个开场白始终对应一个文件；分片大小只影响世界书。
 
