@@ -33,7 +33,30 @@ flowchart TD
 
 ## 安装
 
-需要 Python 3.11 或以上版本：
+需要 Git 和 Python 3.11 或以上版本。以下命令以 Windows PowerShell 为例。
+
+先克隆项目并进入项目目录：
+
+```powershell
+git clone https://github.com/chansey97/st-character-card-translate.git
+cd st-character-card-translate
+```
+
+然后选择以下一种安装方式。
+
+### 普通安装
+
+适合直接使用工具翻译角色卡。
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install .
+```
+
+### 开发安装
+
+适合修改源码或运行测试。
 
 ```powershell
 python -m venv .venv
@@ -41,7 +64,7 @@ python -m venv .venv
 python -m pip install -e ".[dev]"
 ```
 
-普通安装使用 `python -m pip install .`。`st-character-card-translate` 和 `python -m st_character_card_translate` 提供相同入口。
+安装完成后，使用 `st-character-card-translate` 命令。
 
 ## 配置
 
