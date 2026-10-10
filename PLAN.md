@@ -9,7 +9,7 @@
 
 ## 1. 目标与实现范围
 
-实现一个 Python 命令行工具，通过兼容 OpenAI Chat Completions 的 CLI Proxy API，将 JSON 角色卡中的指定内容翻译为目标语言。
+实现一个 Python 命令行工具，通过 OpenAI Compatible API（兼容 OpenAI Chat Completions 的接口），将 JSON 角色卡中的指定内容翻译为目标语言。
 
 采用七阶段流程：
 
@@ -174,6 +174,8 @@ st-character-card-translate INPUT_JSON --source-lang LANG [OPTIONS]
 - `INPUT_JSON` 和 `--source-lang` 在主 CLI 中始终必填，用于确定任务目录。
 
 ### 2.4 分层 TOML 配置
+
+可连接本地或远程的 OpenAI Compatible API 服务，通过 `base_url`、`api_key` 和 `model` 指定服务地址、密钥和模型。服务及所选模型须支持 Chat Completions 的严格 JSON Schema 结构化输出（`response_format.type="json_schema"`、`json_schema.strict=true`）。
 
 包内 `config.default.toml`：
 

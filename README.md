@@ -1,6 +1,6 @@
 # SillyTavern 角色卡翻译工具
 
-通过兼容 OpenAI Chat Completions 的 CLI Proxy API 翻译 V2 风格 JSON 角色卡。七阶段流程依次抽取字段、发现实体、统一译名、生成术语子集、翻译、回填、去重世界书关键词。最终角色卡保留未知字段和扩展。
+通过 OpenAI Compatible API（兼容 OpenAI Chat Completions 的接口）翻译 V2 风格 JSON 角色卡。七阶段流程依次抽取字段、发现实体、统一译名、生成术语子集、翻译、回填、去重世界书关键词。最终角色卡保留未知字段和扩展。
 
 ```mermaid
 flowchart TD
@@ -45,6 +45,8 @@ python -m pip install -e ".[dev]"
 
 ## 配置
 
+可连接本地或远程的 OpenAI Compatible API 服务。服务及所选模型须支持 Chat Completions 的严格 JSON Schema 结构化输出（`response_format.type="json_schema"`、`json_schema.strict=true`）。
+
 包内默认配置：
 
 ```toml
@@ -55,13 +57,13 @@ model = "gemini-3.8-flash-high"
 max_retries = 2
 ```
 
-启动代理服务后使用上述配置，或通过 TOML 文件覆盖相应字段。配置逐层加载：包内默认值 → 用户配置 → `--config-file PATH`。用户配置位置是 `platformdirs.user_config_path("st-character-card-translate", appauthor=False) / "config.toml"`，可运行下列命令查看：
+请根据所用 API 服务，通过 TOML 文件覆盖 `base_url`、`api_key` 和 `model`，分别指定服务地址、密钥和模型。配置逐层加载：包内默认值 → 用户配置 → `--config-file PATH`。用户配置位置是 `platformdirs.user_config_path("st-character-card-translate", appauthor=False) / "config.toml"`，可运行下列命令查看：
 
 ```console
 python -c "from platformdirs import user_config_path; print(user_config_path('st-character-card-translate', appauthor=False) / 'config.toml')"
 ```
 
-不存在的用户配置会被跳过；显式指定的文件必须存在。只接受上述四项，每层均独立校验；没有环境变量覆盖层或当前目录自动搜索。`--help` 无需读取配置或连接代理。
+不存在的用户配置会被跳过；显式指定的文件必须存在。只接受上述四项，每层均独立校验；没有环境变量覆盖层或当前目录自动搜索。`--help` 无需读取配置或连接 API 服务。
 
 ## 使用
 
@@ -74,7 +76,7 @@ st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.js
 任务目录为 `<输出父目录>/<输入文件名去扩展名>__<源语言>_to_<目标语言>/`。省略 `--output-dir` 时使用当前目录作为父目录。最终角色卡位于任务目录的 `deduplicate_keys/<原文件名>`；`backfill/` 保留去重前的角色卡。
 
 ```console
-st-character-card-translate card.json --source-lang en --target-lang ja --chunk-size 10 --background background.txt --config-file proxy.toml --output-dir outputs
+st-character-card-translate card.json --source-lang en --target-lang ja --chunk-size 10 --background background.txt --config-file api.toml --output-dir outputs
 st-character-card-translate card.json --source-lang en --to-stage glossary
 st-character-card-translate card.json --source-lang en --from-stage subsets
 st-character-card-translate card.json --source-lang en --from-stage translate --no-translate-glossary
