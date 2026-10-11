@@ -27,6 +27,7 @@ def request_json(
                 "schema": response_schema.model_json_schema(),
             },
         },
+        reasoning_effort="none",
     )
     if not response.choices:
         raise ValueError("Model returned no choices")
