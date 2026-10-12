@@ -229,6 +229,12 @@ dist/
 
 将 ZIP 分发给用户即可。包中的 `config.toml` 复制自 `src/st_character_card_translate/config.default.toml`，不会包含打包者项目根目录或用户目录中的个人配置。再次构建会替换上述应用目录和 ZIP，请在解压后的副本中修改配置和使用工具。
 
+### GitHub Release
+
+`.github/workflows/release.yml` 仅支持手动运行，推送 tag 不会自动发布。工作流使用 `requirements-build.txt` 固定构建依赖，完成测试、打包和来源证明后创建正式 Release 并上传 ZIP。
+
+将工作流合入默认分支后，在 Actions 中选择 **Release Windows Portable → Run workflow**。选择的分支与输入的既有 tag 必须指向同一提交，以保证来源证明与构建源码一致；tag 格式为 `vX.Y.Z`，且须与 `pyproject.toml` 中的版本一致。待发布的提交必须包含打包脚本、入口文件和构建依赖清单。
+
 ## 测试
 
 ```console

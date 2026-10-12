@@ -108,7 +108,7 @@ python -m st_character_card_translate --help
 
 Windows 兼容范围取决于构建时的 Python 版本；Python 3.14 构建要求 Windows 10 或更新版本，见 [Python 的系统支持说明](https://docs.python.org/3.14/using/windows.html#supported-windows-versions)。
 
-项目根目录提供可双击的 `build_portable.bat`。打包者在 Windows 上使用 x64 Python 完成开发安装后运行脚本；脚本使用项目 `.venv`，不自动安装依赖，并在完成或失败后暂停以供查看结果。
+项目根目录提供可双击的 `build_portable.bat`。打包者在 Windows 上使用 x64 Python 完成开发安装后运行脚本；脚本使用项目 `.venv`，不自动安装依赖。本地完成或失败后暂停以供查看结果；设置了 `CI` 环境变量时跳过暂停。
 
 打包规则：
 

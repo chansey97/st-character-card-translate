@@ -1,0 +1,119 @@
+name: Release Windows Portable
+
+# Only run manually; pushing a tag does not trigger a release.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag at the selected branch commit (e.g. v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+# Avoid running two releases for the same tag simultaneously.
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and publish Windows x64
+    runs-on: windows-latest
+
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+
+    steps:
+      # 1. Validate the requested tag.
+      - name: Validate tag name
+        shell: pwsh
+        run: |
+          if ($env:RELEASE_TAG -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "Invalid release tag: $env:RELEASE_TAG"
+          }
+
+      # 2. Checkout the tag, not the latest main branch.
+      - name: Checkout release source
+        uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+
+      # 3. Set up Python for Windows x64.
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          architecture: x64
+
+      # 4. Keep the source commit consistent with provenance and package version.
+      - name: Verify release source and version
+        shell: pwsh
+        run: |
+          $sourceCommit = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          if ($sourceCommit -ne $env:GITHUB_SHA) {
+            throw "Tag $env:RELEASE_TAG does not match the workflow commit. Select a branch whose commit matches the tag when running this workflow."
+          }
+
+          $version = python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          if ($env:RELEASE_TAG -ne "v$version") {
+            throw "Tag $env:RELEASE_TAG does not match package version $version"
+          }
+
+      # 5. Install the frozen dependencies.
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          .\.venv\Scripts\python.exe -m pip install -r requirements-build.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          .\.venv\Scripts\python.exe -m pip install --no-deps --no-build-isolation .
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          .\.venv\Scripts\python.exe -m pip check
+
+      # 6. Run tests. Do not execute tests/live.
+      - name: Run tests
+        shell: pwsh
+        run: |
+          .\.venv\Scripts\python.exe -m pytest tests/unit tests/integration
+
+      # 7. Reuse the existing PyInstaller build script.
+      - name: Build portable package
+        shell: cmd
+        run: call build_portable.bat
+
+      # 8. Test the extracted ZIP against a local mock API; no LLM service is used.
+      - name: Test portable package
+        shell: pwsh
+        run: |
+          .\.venv\Scripts\python.exe -m pytest tests/portable
+
+      # 9. Generate signed build provenance.
+      - name: Attest build provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/st-character-card-translate-windows-x64.zip
+
+      # 10. Create a GitHub Release and upload the ZIP.
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$env:RELEASE_TAG" `
+            "dist/st-character-card-translate-windows-x64.zip" `
+            --verify-tag `
+            --generate-notes

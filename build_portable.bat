@@ -44,12 +44,12 @@ if errorlevel 1 goto failed
 echo.
 echo Created: "%~dp0dist\st-character-card-translate-windows-x64.zip"
 popd
-pause
+if not defined CI pause
 exit /b 0
 
 :failed
 echo.
 echo Build failed. See the error above and the build instructions in README.md.
 popd
-pause
+if not defined CI pause
 exit /b 1
