@@ -78,12 +78,12 @@ flowchart TD
 
 ### 2.1 安装与入口
 
-使用 Python 3.11 或更高版本。依赖统一声明在 `pyproject.toml`：
+源码安装使用 Python 3.11 或更高版本。依赖统一声明在 `pyproject.toml`：
 
 - `openai`
 - `pydantic>=2,<3`
 - `platformdirs>=4`
-- 开发依赖 `pytest`
+- 开发依赖 `pytest`、`pyinstaller>=6.15`
 
 其余功能使用标准库，包括 `argparse`、`pathlib`、`json`、`time`、`tomllib` 和 `importlib.resources`。
 
@@ -101,6 +101,31 @@ python -m pip install -e ".[dev]"
 st-character-card-translate --help
 python -m st_character_card_translate --help
 ```
+
+#### Portable 发行包
+
+首版提供 Windows x64 ZIP，使用 PyInstaller `--onedir --console` 打包，保留 CLI 的参数和退出码。最终用户解压完整目录后即可使用，无需安装 Python 或下载 Python 依赖；翻译仍需连接 API 服务，本地服务可离线使用。
+
+Windows 兼容范围取决于构建时的 Python 版本；Python 3.14 构建要求 Windows 10 或更新版本，见 [Python 的系统支持说明](https://docs.python.org/3.14/using/windows.html#supported-windows-versions)。
+
+项目根目录提供可双击的 `build_portable.bat`。打包者在 Windows 上使用 x64 Python 完成开发安装后运行脚本；脚本使用项目 `.venv`，不自动安装依赖，并在完成或失败后暂停以供查看结果。
+
+打包规则：
+
+- 入口为 `src/st_character_card_translate/__main__.py`，使用绝对导入调用同一个 `main`。
+- 通过 `--paths` 指定源码目录，通过 `--add-data` 包含包内 `config.default.toml`，仍由 `importlib.resources` 读取。
+- 构建中间文件放在 `build/portable/`，应用目录为 `dist/st-character-card-translate/`。
+- exe 同目录附带 `config.toml`、`README.md` 和 `PLAN.md`；配置只复制自公开的 `src/st_character_card_translate/config.default.toml`，不包含打包者的个人配置。
+- 将整个应用目录（包括 `_internal/` 中的 Python 运行时和依赖）压缩为 `dist/st-character-card-translate-windows-x64.zip`。重复构建替换该应用目录和 ZIP。
+
+在解压后的应用目录中打开 PowerShell：
+
+```powershell
+.\st-character-card-translate.exe --help
+.\st-character-card-translate.exe "C:\cards\card.json" --source-lang en --output-dir outputs
+```
+
+输入、输出及显式配置的相对路径仍相对于当前工作目录。
 
 ### 2.2 典型用法
 
@@ -190,12 +215,14 @@ max_retries = 2
 配置依次加载，按 `[openai]` 内的字段覆盖：
 
 1. Python 包中的 `config.default.toml`，通过 package-data 打包。
-2. `platformdirs.user_config_path("st-character-card-translate", appauthor=False) / "config.toml"`。
+2. 根据运行方式选择配置位置：源码运行使用 `platformdirs.user_config_path("st-character-card-translate", appauthor=False) / "config.toml"`；portable 使用 `Path(sys.executable).resolve().parent / "config.toml"`。
 3. `--config-file` 指定的文件。
+
+通过 `getattr(sys, "frozen", False)` 判断是否为打包后的程序。Portable 的第二层替代用户配置层，不叠加读取；配置位于 exe 旁，不使用当前工作目录或 PyInstaller 的 `_internal/` 资源目录。
 
 约定：
 
-- 用户配置不存在时跳过，不自动创建。
+- 第二层配置不存在时跳过，不回退到其他目录；运行时不自动创建。Portable 随包配置由构建脚本提供。
 - 显式指定的配置文件不存在时报错。
 - 只支持上述四项，不自动搜索当前目录配置，不增加环境变量覆盖层。
 - 字符串配置必须非空；`max_retries` 必须是非负整数，允许 `0`。
@@ -433,12 +460,14 @@ data.character_book.description
 ├── tests/
 │   ├── unit/
 │   ├── integration/
+│   ├── portable/
 │   └── live/
 ├── test_outputs/                        # 真实 API 测试产物，保留供检查
 │   └── live/
 │       └── <run_id>/
 │           └── <case_name>/
 ├── pyproject.toml
+├── build_portable.bat                   # Windows x64 onedir 及 ZIP 打包
 ├── PLAN.md
 └── README.md
 ```
@@ -1169,7 +1198,7 @@ for position, (entry, translated) in enumerate(
 | 模型契约 | 普通文本实体请求及其完整提示词均不包含 forced_terms；世界书实体请求包含 forced_terms，无非空白关键词时为空清单，强制实体规则仅出现在世界书类型提示词中；每条开场白与普通字段共用 text 请求、提示词及响应 Schema，两类实体响应均保持九字段结构；请求不包含文件路径或文件名序号；世界书翻译响应只含 id/content/comment，数量或逐项 id 不符、null 位置错误时停止；空白文本由程序恢复 |
 | 回填与去重 | 开场白按原数组位置读取同序号文件中的 text；世界书按译文文件名排序拼接，再按原位置回填；不按 id 查找、排序或重查数量；缺目标文件或世界书译文不足时停止且不输出新卡；精确稳定去重；不跨数组或条目去重 |
 | 复用与失败 | 存在即跳过；使用损坏文件时报错；保留已有产物；空任务可完成七阶段 |
-| CLI 与配置 | chunk-size 默认 10，显式指定时只接受一个正整数，缺值、多值或非正值均报错；非法阶段区间；语言字符检查；配置逐层覆盖、错误定位、零重试；首次调用前等待、复用不等待 |
+| CLI 与配置 | chunk-size 默认 10，显式指定时只接受一个正整数，缺值、多值或非正值均报错；非法阶段区间；语言字符检查；配置逐层覆盖、错误定位、零重试；源码与 frozen 模式的第二层路径隔离、缺失配置跳过、显式配置优先；首次调用前等待、复用不等待 |
 
 数组对应关系的回归测试必须包含：
 
@@ -1212,3 +1241,13 @@ test_outputs/live/<含微秒的运行时间戳>/<case_name>/
 每次运行使用新目录，避免旧产物使请求被跳过。成功或失败均保留测试输入和输出，并报告路径；`test_outputs/` 加入版本控制忽略列表。
 
 人工检查译文语言、可读性、术语采用情况，以及宏、标签和格式的保留。不用固定译文措辞作为断言，不以假客户端测试声称已经验证实际递归触发。
+
+### 6.3 Portable 验收
+
+构建 ZIP 后显式运行 `python -m pytest tests/portable`，不纳入默认测试目录。
+
+- 实际执行 `build_portable.bat`，确认 ZIP 包含 exe、完整依赖目录、公开默认配置及 README、PLAN。
+- 解压到包含中文和空格的路径，从另一个工作目录执行 `--help` 和七阶段流程。
+- 使用本地模拟 Chat Completions HTTP 服务验证打包后的 SDK 请求、结构化响应解析、术语替换及回填，不调用真实模型。
+- 验证 exe 旁的配置与 `--config-file` 按字段覆盖；缺少第二层时使用包内默认值；非法配置返回退出码 `2`。
+- 在未安装 Python 的 Windows x64 机器上验收完整流程；开发机上的打包测试不能替代此项。

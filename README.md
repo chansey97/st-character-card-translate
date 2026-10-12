@@ -33,6 +33,23 @@ flowchart TD
 
 ## 安装
 
+### Portable（Windows x64）
+
+解压 `st-character-card-translate-windows-x64.zip`，保留整个目录及其中的 `_internal/`。无需安装 Python、Git 或下载 Python 依赖；翻译时仍需运行或连接可用的 API 服务。使用本地服务时，可以离线运行。
+
+支持的 Windows 版本取决于构建时使用的 Python；使用 Python 3.14 构建的包要求 Windows 10 或更新版本，见 [Python 的系统支持说明](https://docs.python.org/3.14/using/windows.html#supported-windows-versions)。
+
+按下文[配置](#配置)说明修改 exe 同目录的 `config.toml`，然后在该目录打开 PowerShell：
+
+```powershell
+.\st-character-card-translate.exe --help
+.\st-character-card-translate.exe "C:\cards\card.json" --source-lang en --output-dir outputs
+```
+
+Portable 保留命令行用法，需要在终端中传入参数。下文的 `st-character-card-translate` 命令在此版本中写为 `.\st-character-card-translate.exe`，其余参数相同。相对输入、输出及 `--config-file` 路径仍相对于当前工作目录。
+
+### 从源码安装
+
 需要 Git 和 Python 3.11 或以上版本。以下命令以 Windows PowerShell 为例。
 
 先克隆项目并进入项目目录：
@@ -44,7 +61,7 @@ cd st-character-card-translate
 
 然后选择以下一种安装方式。
 
-### 普通安装
+#### 普通安装
 
 适合直接使用工具翻译角色卡。
 
@@ -54,9 +71,9 @@ python -m venv .venv
 python -m pip install .
 ```
 
-### 开发安装
+#### 开发安装
 
-适合修改源码或运行测试。
+适合修改源码、运行测试或构建 portable 发行包。
 
 ```powershell
 python -m venv .venv
@@ -80,13 +97,23 @@ model = "gemini-3.8-flash-high"
 max_retries = 2
 ```
 
-请根据所用 API 服务，通过 TOML 文件覆盖 `base_url`、`api_key` 和 `model`，分别指定服务地址、密钥和模型。配置逐层加载：包内默认值 → 用户配置 → `--config-file PATH`。用户配置位置是 `platformdirs.user_config_path("st-character-card-translate", appauthor=False) / "config.toml"`，可运行下列命令查看：
+请根据所用 API 服务，通过 TOML 文件覆盖 `base_url`、`api_key` 和 `model`，分别指定服务地址、密钥和模型。配置按 `[openai]` 内的字段逐层覆盖，后加载的同名字段优先：
+
+| 层级 | 从源码安装 | Portable |
+| --- | --- | --- |
+| 1 | 包内 `config.default.toml` | 包内 `config.default.toml` |
+| 2 | 用户配置目录中的 `config.toml` | exe 同目录的 `config.toml` |
+| 3 | `--config-file PATH` | `--config-file PATH` |
+
+Portable 随包提供公开默认配置，修改 exe 旁的 `config.toml` 即可；此版本不读取用户配置目录。配置位置与启动命令时的工作目录无关。
+
+从源码安装时，用户配置位置是 `platformdirs.user_config_path("st-character-card-translate", appauthor=False) / "config.toml"`，可在安装环境中运行下列命令查看：
 
 ```console
 python -c "from platformdirs import user_config_path; print(user_config_path('st-character-card-translate', appauthor=False) / 'config.toml')"
 ```
 
-不存在的用户配置会被跳过；显式指定的文件必须存在。只接受上述四项，每层均独立校验；没有环境变量覆盖层或当前目录自动搜索。`--help` 无需读取配置或连接 API 服务。
+第二层配置不存在时跳过，运行时不自动创建；显式指定的文件必须存在。只接受上述四项，每层均独立校验；没有环境变量覆盖层或当前目录自动搜索。`--help` 无需读取配置或连接 API 服务。
 
 ## 使用
 
@@ -179,6 +206,29 @@ st-character-card-translate examples/main_the-shining-stone-3ab47f90d0c6_json.js
 
 工具不支持 PNG、V1、V3 或 `/pattern/flags` 形式的世界书关键词。除普通目标字段、每条开场白以及世界书 `keys`、`secondary_keys`、`content`、`comment` 外，其余数据保留，包括世界书 `name`、`id` 和设置。关键词由程序精确替换及稳定去重；正文的术语采用、格式和 SillyTavern 递归触发效果需要人工检查。
 
+## 构建 portable 发行包
+
+在 Windows 上使用 x64 Python 完成[开发安装](#开发安装)后，双击项目根目录的 `build_portable.bat`，或在终端运行：
+
+```powershell
+.\build_portable.bat
+```
+
+脚本直接使用项目 `.venv` 中的 PyInstaller，以 `--onedir` 模式打包，不自动安装或下载依赖。构建成功后生成：
+
+```text
+dist/
+├── st-character-card-translate-windows-x64.zip
+└── st-character-card-translate/
+    ├── st-character-card-translate.exe
+    ├── config.toml
+    ├── README.md
+    ├── PLAN.md
+    └── _internal/
+```
+
+将 ZIP 分发给用户即可。包中的 `config.toml` 复制自 `src/st_character_card_translate/config.default.toml`，不会包含打包者项目根目录或用户目录中的个人配置。再次构建会替换上述应用目录和 ZIP，请在解压后的副本中修改配置和使用工具。
+
 ## 测试
 
 ```console
@@ -187,5 +237,11 @@ python -m pytest tests/live -s
 ```
 
 默认只运行单元和集成测试，不连接 API。真实测试显式运行，使用相同的默认及用户配置，以两组语言组合发起少量真实请求。输入和输出保存在 `test_outputs/live/<含微秒时间戳>/<case_name>/`，成功和失败均保留并报告路径。检查译文语言、可读性、术语采用，以及宏、标签和格式保留；测试不以固定译文措辞作为断言。
+
+构建 portable ZIP 后，可单独验证解压运行、配置覆盖和七阶段流程；该测试仅连接本地模拟 HTTP 服务：
+
+```console
+python -m pytest tests/portable
+```
 
 完整数据契约、提示词与验收要求见 [PLAN.md](PLAN.md)。请求采用 [OpenAI Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=chat) 的严格 JSON Schema，保持同步、串行、非流式执行。

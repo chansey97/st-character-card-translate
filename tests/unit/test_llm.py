@@ -12,7 +12,8 @@ def test_request_contract_and_wait_before_first_and_each_call(fake_client, monke
 
     def respond(call):
         events.append("call")
-        assert set(call) == {"model", "stream", "messages", "response_format"}
+        assert set(call) == {"model", "stream", "messages", "response_format", "reasoning_effort"}
+        assert call["reasoning_effort"] == "none"
         assert call["stream"] is False
         assert call["response_format"]["type"] == "json_schema"
         assert call["response_format"]["json_schema"]["strict"] is True

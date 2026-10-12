@@ -64,3 +64,60 @@ def test_explicit_missing_and_invalid_encoding_report_path(tmp_path, isolated_co
     with pytest.raises(ConfigError) as exc:
         load_config(path)
     assert str(path) in str(exc.value)
+
+
+@pytest.fixture
+def portable_config(tmp_path, monkeypatch):
+    executable_dir = tmp_path / "portable app"
+    executable_dir.mkdir()
+    monkeypatch.setattr(config.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(config.sys, "executable", str(executable_dir / "app.exe"))
+    monkeypatch.setattr(
+        config, "user_config_path", lambda *args, **kwargs: pytest.fail("Portable must not use user config"),
+    )
+    return executable_dir / "config.toml"
+
+
+def test_portable_uses_executable_directory_and_explicit_field_overrides(tmp_path, portable_config, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.toml").write_text("invalid cwd config", encoding="utf-8")
+    internal = portable_config.parent / "_internal"
+    internal.mkdir()
+    (internal / "config.toml").write_text("invalid internal config", encoding="utf-8")
+    monkeypatch.setattr(config.sys, "_MEIPASS", str(internal), raising=False)
+    portable_config.write_text('[openai]\nmodel="portable-model"\nmax_retries=0\n', encoding="utf-8")
+
+    assert load_config().model == "portable-model"
+    explicit = tmp_path / "explicit.toml"
+    explicit.write_text('[openai]\nmodel="explicit-model"\nbase_url="http://localhost:9000/v1"\n', encoding="utf-8")
+    settings = load_config(explicit)
+    assert settings.model == "explicit-model"
+    assert settings.base_url == "http://localhost:9000/v1"
+    assert settings.max_retries == 0
+    assert settings.api_key == "123456"
+
+
+def test_missing_portable_config_uses_defaults_without_creating_file(portable_config):
+    settings = load_config()
+    assert settings.model == "gemini-3.8-flash-high"
+    assert settings.api_key == "123456"
+    assert settings.max_retries == 2
+    assert not portable_config.exists()
+
+
+def test_invalid_portable_config_cannot_be_masked(tmp_path, portable_config):
+    portable_config.write_text('[openai]\nmodel=42\n', encoding="utf-8")
+    explicit = tmp_path / "valid.toml"
+    explicit.write_text('[openai]\nmodel="valid"\n', encoding="utf-8")
+    with pytest.raises(ConfigError) as exc:
+        load_config(explicit)
+    assert str(portable_config) in str(exc.value)
+
+
+def test_unfrozen_uses_user_config_and_ignores_executable_directory(tmp_path, isolated_config, monkeypatch):
+    monkeypatch.setattr(config.sys, "frozen", False, raising=False)
+    monkeypatch.setattr(config.sys, "executable", str(tmp_path / "python.exe"))
+    (tmp_path / "config.toml").write_text("invalid executable config", encoding="utf-8")
+    isolated_config.parent.mkdir()
+    isolated_config.write_text('[openai]\nmodel="user-model"\n', encoding="utf-8")
+    assert load_config().model == "user-model"

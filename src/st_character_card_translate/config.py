@@ -1,5 +1,6 @@
 """Load and validate each TOML layer before merging its OpenAI settings."""
 
+import sys
 import tomllib
 from dataclasses import dataclass
 from importlib.resources import files
@@ -48,9 +49,13 @@ def _load_layer(path) -> dict:
 
 def load_config(config_file: Path | None = None) -> OpenAIConfig:
     settings = _load_layer(files(__package__).joinpath("config.default.toml"))
-    user_file = user_config_path(APP_NAME, appauthor=False) / "config.toml"
-    if user_file.exists():
-        settings.update(_load_layer(user_file))
+    if getattr(sys, "frozen", False):
+        config_dir = Path(sys.executable).resolve().parent
+    else:
+        config_dir = user_config_path(APP_NAME, appauthor=False)
+    local_file = config_dir / "config.toml"
+    if local_file.exists():
+        settings.update(_load_layer(local_file))
     if config_file is not None:
         settings.update(_load_layer(config_file))
     return OpenAIConfig(**settings)
