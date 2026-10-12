@@ -28,7 +28,7 @@ if errorlevel 1 (
     --specpath "%~dp0build\portable" ^
     --workpath "%~dp0build\portable" ^
     --distpath "%~dp0dist" ^
-    "%~dp0src\st_character_card_translate\__main__.py"
+    "%~dp0portable_entry.py"
 if errorlevel 1 goto failed
 
 copy /y "src\st_character_card_translate\config.default.toml" "dist\st-character-card-translate\config.toml" >nul

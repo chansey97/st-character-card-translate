@@ -1,3 +1,3 @@
-from st_character_card_translate.cli import main
+from .cli import main
 
 raise SystemExit(main())

@@ -112,7 +112,7 @@ Windows 兼容范围取决于构建时的 Python 版本；Python 3.14 构建要�
 
 打包规则：
 
-- 入口为 `src/st_character_card_translate/__main__.py`，使用绝对导入调用同一个 `main`。
+- 打包专用入口为项目根目录的 `portable_entry.py`，使用绝对导入调用 `st_character_card_translate.cli:main`；包内 `__main__.py` 保留相对导入。
 - 通过 `--paths` 指定源码目录，通过 `--add-data` 包含包内 `config.default.toml`，仍由 `importlib.resources` 读取。
 - 构建中间文件放在 `build/portable/`，应用目录为 `dist/st-character-card-translate/`。
 - exe 同目录附带 `config.toml`、`README.md` 和 `PLAN.md`；配置只复制自公开的 `src/st_character_card_translate/config.default.toml`，不包含打包者的个人配置。
@@ -468,6 +468,7 @@ data.character_book.description
 │           └── <case_name>/
 ├── pyproject.toml
 ├── build_portable.bat                   # Windows x64 onedir 及 ZIP 打包
+├── portable_entry.py                    # 使用绝对导入的打包专用入口
 ├── PLAN.md
 └── README.md
 ```
