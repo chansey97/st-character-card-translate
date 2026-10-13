@@ -1,6 +1,7 @@
 """Command-line validation and inclusive seven-stage orchestration."""
 
 import argparse
+import io
 import math
 import re
 import sys
@@ -67,6 +68,11 @@ def make_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Windows pipes can default to an encoding that cannot represent card paths.
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8", errors=stream.errors)
+
     parser = make_parser()
     args = parser.parse_args(argv)
     start, end = STAGES.index(args.from_stage), STAGES.index(args.to_stage)

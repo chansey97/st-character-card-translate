@@ -46,7 +46,7 @@ def portable(tmp_path):
     def run(*args, expected=0):
         result = subprocess.run(
             [str(app / "st-character-card-translate.exe"), *map(str, args)],
-            cwd=cwd, env=env, capture_output=True, encoding="utf-8", errors="replace", timeout=60,
+            cwd=cwd, env=env, capture_output=True, encoding="utf-8", timeout=60,
         )
         assert result.returncode == expected, result.stdout + result.stderr
         return result
@@ -61,7 +61,9 @@ def test_portable_packaged_defaults_and_config_errors(portable, save_json):
     local_config = app / "config.toml"
     local_config.write_text('[openai]\nmodel=42\n', encoding="utf-8")
     assert "--source-lang" in run("--help").stdout
-    assert "Configuration error:" in run(*arguments, expected=2).stderr
+    error = run(*arguments, expected=2).stderr
+    assert "Configuration error:" in error
+    assert str(local_config) in error
     explicit = cwd / "explicit.toml"
     explicit.write_text('[openai]\nmodel="valid"\n', encoding="utf-8")
     run(*arguments, "--config-file", explicit, expected=2)
@@ -108,7 +110,7 @@ def test_portable_full_pipeline_and_explicit_override(portable, save_json, entit
         def log_message(self, *args):
             pass
 
-    card = save_json(cwd / "角色 card.json", {"data": {
+    card = save_json(cwd / "角色 🪨 card.json", {"data": {
         "description": "Ailin", "extensions": {"keep": True},
         "character_book": {"entries": [{
             "id": 42, "name": "Original name", "keys": ["Ailin", "Ailin"], "secondary_keys": [],
@@ -129,8 +131,10 @@ def test_portable_full_pipeline_and_explicit_override(portable, save_json, entit
             args = [card, "--source-lang", "en", "--output-dir", mode]
             if mode == "explicit":
                 args += ["--config-file", explicit.name]
-            run(*args)
-            task = cwd / mode / "角色 card__en_to_zh-Hans"
+            completed = run(*args)
+            assert "Completed:" in completed.stdout
+            assert card.name in completed.stdout
+            task = cwd / mode / f"{card.stem}__en_to_zh-Hans"
             result = read_json(task / "deduplicate_keys" / card.name)["data"]
             assert result["description"] == "艾琳"
             assert result["extensions"] == {"keep": True}

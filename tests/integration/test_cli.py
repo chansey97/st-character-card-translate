@@ -1,3 +1,4 @@
+import io
 import subprocess
 import sys
 from pathlib import Path
@@ -58,6 +59,30 @@ def test_bad_config_blocks_even_local_stage_before_output(tmp_path, isolated_con
     assert cli.main(["missing.json", "--source-lang", "en", "--to-stage", "extract", "--output-dir", str(output)]) == 2
     assert not output.exists()
     assert str(isolated_config) in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("encoding", ["cp1252", "gbk"])
+def test_unicode_paths_with_legacy_output_encoding(tmp_path, save_json, isolated_config, monkeypatch, encoding):
+    card = save_json(tmp_path / "角色 🪨 card.json", {"data": {"description": "Ailin"}})
+    args = [str(card), "--source-lang", "en", "--to-stage", "extract", "--output-dir", str(tmp_path)]
+    with (
+        io.TextIOWrapper(io.BytesIO(), encoding=encoding) as stdout,
+        io.TextIOWrapper(io.BytesIO(), encoding=encoding, errors="backslashreplace") as stderr,
+        monkeypatch.context() as streams,
+    ):
+        streams.setattr(sys, "stdout", stdout)
+        streams.setattr(sys, "stderr", stderr)
+        assert cli.main(args) == 0
+        stdout.flush()
+        assert card.stem in stdout.buffer.getvalue().decode("utf-8")
+
+        missing_config = tmp_path / "缺失 🪨.toml"
+        assert cli.main([*args, "--config-file", str(missing_config)]) == 2
+        stderr.flush()
+        assert str(missing_config) in stderr.buffer.getvalue().decode("utf-8")
+
+    task = tmp_path / f"{card.stem}__en_to_zh-Hans"
+    assert read_json(task / "fields/data.description.json") == {"text": "Ailin"}
 
 
 def test_only_requested_stage_runs_and_does_not_create_client(tmp_path, save_json, isolated_config, monkeypatch):
