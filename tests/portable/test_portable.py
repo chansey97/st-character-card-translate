@@ -25,8 +25,8 @@ def portable(tmp_path):
     defaults = (PROJECT / "src/st_character_card_translate/config.default.toml").read_bytes()
     assert (app / "config.toml").read_bytes() == defaults
     assert (app / "_internal/st_character_card_translate/config.default.toml").read_bytes() == defaults
-    for name in ("README.md", "PLAN.md"):
-        assert (app / name).read_bytes() == (PROJECT / name).read_bytes()
+    assert (app / "README.md").read_bytes() == (PROJECT / "README.md").read_bytes()
+    assert not (app / "PLAN.md").exists()
     assert list((app / "_internal").glob("python3*.dll"))
 
     cwd = tmp_path / "working directory"

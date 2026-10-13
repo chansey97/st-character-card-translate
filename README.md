@@ -223,7 +223,6 @@ dist/
     ├── st-character-card-translate.exe
     ├── config.toml
     ├── README.md
-    ├── PLAN.md
     └── _internal/
 ```
 
@@ -244,4 +243,4 @@ python -m pytest tests/live -s
 python -m pytest tests/portable
 ```
 
-完整数据契约、提示词与验收要求见 [PLAN.md](PLAN.md)。请求采用 [OpenAI Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=chat) 的严格 JSON Schema，保持同步、串行、非流式执行。
+完整数据契约、提示词与验收要求见 [PLAN.md](https://github.com/chansey97/st-character-card-translate/blob/main/PLAN.md)。请求采用 [OpenAI Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=chat) 的严格 JSON Schema，保持同步、串行、非流式执行。

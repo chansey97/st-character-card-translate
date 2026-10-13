@@ -115,7 +115,7 @@ Windows 兼容范围取决于构建时的 Python 版本；Python 3.14 构建要�
 - 打包专用入口为项目根目录的 `portable_entry.py`，使用绝对导入调用 `st_character_card_translate.cli:main`；包内 `__main__.py` 保留相对导入。
 - 通过 `--paths` 指定源码目录，通过 `--add-data` 包含包内 `config.default.toml`，仍由 `importlib.resources` 读取。
 - 构建中间文件放在 `build/portable/`，应用目录为 `dist/st-character-card-translate/`。
-- exe 同目录附带 `config.toml`、`README.md` 和 `PLAN.md`；配置只复制自公开的 `src/st_character_card_translate/config.default.toml`，不包含打包者的个人配置。
+- exe 同目录附带 `config.toml` 和 `README.md`；配置只复制自公开的 `src/st_character_card_translate/config.default.toml`，不包含打包者的个人配置。
 - 将整个应用目录（包括 `_internal/` 中的 Python 运行时和依赖）压缩为 `dist/st-character-card-translate-windows-x64.zip`。重复构建替换该应用目录和 ZIP。
 
 在解压后的应用目录中打开 PowerShell：
@@ -1247,7 +1247,7 @@ test_outputs/live/<含微秒的运行时间戳>/<case_name>/
 
 构建 ZIP 后显式运行 `python -m pytest tests/portable`，不纳入默认测试目录。
 
-- 实际执行 `build_portable.bat`，确认 ZIP 包含 exe、完整依赖目录、公开默认配置及 README、PLAN。
+- 实际执行 `build_portable.bat`，确认 ZIP 包含 exe、完整依赖目录、公开默认配置及 README，不包含设计文档 PLAN.md。
 - 解压到包含中文和空格的路径，从另一个工作目录执行 `--help` 和七阶段流程。
 - 使用本地模拟 Chat Completions HTTP 服务验证打包后的 SDK 请求、结构化响应解析、术语替换及回填，不调用真实模型。
 - 验证 exe 旁的配置与 `--config-file` 按字段覆盖；缺少第二层时使用包内默认值；非法配置返回退出码 `2`。
