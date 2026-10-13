@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build and publish Windows x64
+    name: Build Windows x64 and draft release
     runs-on: windows-latest
 
     env:
@@ -98,13 +98,14 @@ jobs:
         with:
           subject-path: dist/st-character-card-translate-windows-x64.zip
 
-      # 10. Create a GitHub Release and upload the ZIP.
-      - name: Publish GitHub Release
+      # 10. Create a draft with the ZIP; publish it manually from the Releases page.
+      - name: Create draft GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$env:RELEASE_TAG" `
             "dist/st-character-card-translate-windows-x64.zip" `
+            --draft `
             --verify-tag `
             --generate-notes
