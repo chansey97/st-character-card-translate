@@ -35,6 +35,8 @@ copy /y "src\st_character_card_translate\config.default.toml" "dist\st-character
 if errorlevel 1 goto failed
 copy /y "README.md" "dist\st-character-card-translate\README.md" >nul
 if errorlevel 1 goto failed
+copy /y "README.en.md" "dist\st-character-card-translate\README.en.md" >nul
+if errorlevel 1 goto failed
 
 ".venv\Scripts\python.exe" -c "import shutil; shutil.make_archive('dist/st-character-card-translate-windows-x64', 'zip', 'dist', 'st-character-card-translate')"
 if errorlevel 1 goto failed

@@ -1,3 +1,5 @@
+[简体中文](README.md) | [English](README.en.md)
+
 # SillyTavern 角色卡翻译工具
 
 ## 介绍
